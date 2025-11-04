@@ -1,0 +1,30 @@
+# Build directories
+build/
+bin/
+*.o
+*.a
+*.so
+*.dylib
+
+# Executable
+delta_robot_sim
+
+# External dependencies (downloaded during build)
+external/imgui/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# OS specific
+.DS_Store
+Thumbs.db
