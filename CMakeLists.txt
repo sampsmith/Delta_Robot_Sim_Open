@@ -29,6 +29,17 @@ set(SOURCES
     src/main.cpp
     src/DeltaRobot.cpp
     src/Renderer.cpp
+    src/MotorControl.cpp
+    src/HardwareInterface.cpp
+    src/DeltaRobotProtocol.cpp
+    src/SequenceController.cpp
+    src/ControlPanel.cpp
+    src/RobotSetupPanel.cpp
+    src/WaypointPanel.cpp
+    src/SequencePanel.cpp
+    src/HardwarePanel.cpp
+    src/DisplayPanel.cpp
+    src/UIManager.cpp
 )
 
 # Executable

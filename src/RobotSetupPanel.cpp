@@ -1,0 +1,358 @@
+#include "UIPanels.hpp"
+#include "DeltaRobot.hpp"
+#include "MotorControl.hpp"
+#include <cmath>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+RobotSetupPanel::RobotSetupPanel(DeltaRobot& robot, MotorControl& motorControl)
+    : robot_(robot), motorControl_(motorControl) {
+}
+
+int RobotSetupPanel::setupSubTab_ = 0;
+
+void RobotSetupPanel::render() {
+    ImGui::BeginChild("SetupContent", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    
+    const char* setupTabNames[] = { "Dimensions", "Motors", "Workspace" };
+    if (ImGui::BeginTabBar("SetupSubTabs")) {
+        if (ImGui::BeginTabItem(setupTabNames[0])) {
+            renderDimensionsTab();
+            ImGui::EndTabItem();
+        }
+        
+        if (ImGui::BeginTabItem(setupTabNames[1])) {
+            renderMotorsTab();
+            ImGui::EndTabItem();
+        }
+        
+        if (ImGui::BeginTabItem(setupTabNames[2])) {
+            renderWorkspaceTab();
+            ImGui::EndTabItem();
+        }
+        
+        ImGui::EndTabBar();
+    }
+    
+    ImGui::EndChild();
+}
+
+void RobotSetupPanel::renderDimensionsTab() {
+    DeltaRobotConfig config = robot_.getConfig();
+    bool configChanged = false;
+    
+    ImGui::Text("Robot Geometry Configuration");
+    ImGui::Separator();
+    
+    // Base Plate (Top Plate) Configuration
+    ImGui::Text("Base Plate (Top Plate):");
+    if (ImGui::DragFloat("Base Plate Radius (m)", &config.basePlateRadius, 0.001f, 0.05f, 0.5f, "%.3f")) {
+        config.baseRadius = config.basePlateRadius;
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Outer radius of the base plate (top plate) where motors are mounted");
+    }
+    
+    if (ImGui::DragFloat("Base Plate Height (m)", &config.basePlateHeight, 0.001f, -0.5f, 0.5f, "%.3f")) {
+        config.baseHeight = config.basePlateHeight;
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Height of base plate above origin (usually 0)");
+    }
+    
+    if (ImGui::DragFloat("Base Plate Thickness (m)", &config.basePlateThickness, 0.001f, 0.005f, 0.05f, "%.3f")) {
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Thickness of the base plate");
+    }
+    
+    ImGui::Separator();
+    
+    // Effector Plate (Bottom Plate) Configuration
+    ImGui::Text("Effector Plate (Bottom Plate):");
+    if (ImGui::DragFloat("Effector Plate Radius (m)", &config.effectorPlateRadius, 0.001f, 0.01f, 0.2f, "%.3f")) {
+        config.effectorRadius = config.effectorPlateRadius;
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Outer radius of the effector plate (bottom plate) where arms connect");
+    }
+    
+    if (ImGui::DragFloat("Effector Plate Thickness (m)", &config.effectorPlateThickness, 0.001f, 0.002f, 0.02f, "%.3f")) {
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Thickness of the effector plate");
+    }
+    
+    ImGui::Separator();
+    
+    // Joint Positions
+    ImGui::Text("Joint Positions:");
+    if (ImGui::DragFloat("Base Joint Radius (m)", &config.baseJointRadius, 0.001f, 0.05f, 0.3f, "%.3f")) {
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Distance from base center to motor joint center");
+    }
+    
+    if (ImGui::DragFloat("Effector Joint Radius (m)", &config.effectorJointRadius, 0.001f, 0.01f, 0.15f, "%.3f")) {
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Distance from effector center to arm joint center");
+    }
+    
+    ImGui::Separator();
+    
+    // Arm Dimensions
+    ImGui::Text("Arm Dimensions:");
+    if (ImGui::DragFloat("Upper Arm Length (m)", &config.upperArmLength, 0.001f, 0.05f, 1.0f, "%.3f")) {
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Length from motor joint to elbow joint (bicep)");
+    }
+    
+    if (ImGui::DragFloat("Lower Arm Length (m)", &config.lowerArmLength, 0.001f, 0.05f, 1.0f, "%.3f")) {
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Length from elbow joint to end effector joint (forearm)");
+    }
+    
+    if (ImGui::DragFloat("Arm Thickness (m)", &config.armThickness, 0.001f, 0.005f, 0.05f, "%.3f")) {
+        configChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Thickness/diameter of the arm rods");
+    }
+    
+    ImGui::Separator();
+    
+    // Motor Limits
+    ImGui::Text("Motor Limits:");
+    float minAngleDeg = config.minMotorAngle * 180.0f / M_PI;
+    float maxAngleDeg = config.maxMotorAngle * 180.0f / M_PI;
+    if (ImGui::DragFloat("Min Motor Angle (deg)", &minAngleDeg, 0.1f, -90.0f, 0.0f, "%.1f")) {
+        config.minMotorAngle = minAngleDeg * M_PI / 180.0f;
+        configChanged = true;
+    }
+    if (ImGui::DragFloat("Max Motor Angle (deg)", &maxAngleDeg, 0.1f, 0.0f, 90.0f, "%.1f")) {
+        config.maxMotorAngle = maxAngleDeg * M_PI / 180.0f;
+        configChanged = true;
+    }
+    
+    if (configChanged) {
+        robot_.setConfig(config);
+        motorControl_.updateVelocityLimits(config);
+    }
+}
+
+void RobotSetupPanel::renderMotorsTab() {
+    MotorConfig motorConfig = motorControl_.getMotorConfig(0);
+    DeltaRobotConfig robotConfig = robot_.getConfig();
+    bool motorChanged = false;
+    
+    ImGui::Text("Motor Configuration (NEMA 23)");
+    ImGui::Separator();
+    
+    // Motor Presets
+    ImGui::Text("Presets:");
+    if (ImGui::Button("NEMA 23 Standard (16 microstep, 10:1 gearbox)")) {
+        motorConfig.stepsPerRevolution = 200;
+        motorConfig.microstepping = 16;
+        motorConfig.gearRatio = 10.0f;
+        motorConfig.maxMotorRPM = 600.0f;
+        motorConfig.acceleration = 500.0f;
+        motorChanged = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("High Speed (16 microstep, 10:1 gearbox)")) {
+        motorConfig.stepsPerRevolution = 200;
+        motorConfig.microstepping = 16;
+        motorConfig.gearRatio = 10.0f;
+        motorConfig.maxMotorRPM = 1200.0f;
+        motorConfig.acceleration = 1000.0f;
+        motorChanged = true;
+    }
+    
+    ImGui::Separator();
+    
+    // Basic Motor Settings
+    if (ImGui::DragInt("Steps per Revolution", &motorConfig.stepsPerRevolution, 1, 200, 400)) {
+        motorChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("NEMA 23 standard: 200 steps/rev (1.8° per step)");
+    }
+    
+    int microstepping = motorConfig.microstepping;
+    const char* microstepOptions[] = { "1", "2", "4", "8", "16", "32", "64" };
+    int microstepIndex = 0;
+    for (int i = 0; i < 7; ++i) {
+        if (microstepping == (1 << i)) {
+            microstepIndex = i;
+            break;
+        }
+    }
+    if (ImGui::Combo("Microstepping", &microstepIndex, microstepOptions, 7)) {
+        motorConfig.microstepping = 1 << microstepIndex;
+        motorChanged = true;
+    }
+    
+    if (ImGui::DragFloat("Gear Ratio", &motorConfig.gearRatio, 0.1f, 1.0f, 100.0f, "%.1f:1")) {
+        motorChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Planetary gearbox reduction ratio (10:1 = motor turns 10x for 1x arm rotation)");
+    }
+    
+    ImGui::Separator();
+    
+    // Motor Speed
+    if (ImGui::DragFloat("Max Motor RPM", &motorConfig.maxMotorRPM, 10.0f, 100.0f, 3000.0f, "%.0f")) {
+        motorChanged = true;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Maximum motor RPM (typical NEMA 23: 600-1200 RPM)");
+    }
+    
+    if (ImGui::DragFloat("Acceleration (steps/s²)", &motorConfig.acceleration, 10.0f, 100.0f, 5000.0f, "%.0f")) {
+        motorChanged = true;
+    }
+    
+    ImGui::Separator();
+    ImGui::Text("Calculated Values:");
+    
+    motorConfig.calculateDependentValues(robotConfig.upperArmLength);
+    
+    ImGui::Text("At Motor Shaft:");
+    ImGui::BulletText("Max Steps/Sec: %.0f", motorConfig.maxStepsPerSecond);
+    
+    float totalStepsPerRev = motorConfig.stepsPerRevolution * motorConfig.microstepping;
+    ImGui::BulletText("Steps/Rev (motor): %.0f", totalStepsPerRev);
+    
+    ImGui::Text("At Arm Output (after gearbox):");
+    float maxArmRPM = motorConfig.maxMotorRPM / motorConfig.gearRatio;
+    ImGui::BulletText("Max Arm RPM: %.1f", maxArmRPM);
+    ImGui::BulletText("Max Arm Angular Velocity: %.3f rad/s", motorConfig.maxArmAngularVelocity);
+    ImGui::BulletText("Max Arm Angular Velocity: %.2f deg/s", motorConfig.maxArmAngularVelocity * 180.0f / M_PI);
+    
+    ImGui::Text("End Effector Velocity:");
+    ImGui::BulletText("Max Linear Velocity: %.3f m/s", motorConfig.maxEndEffectorVelocity);
+    ImGui::BulletText("Max Linear Velocity: %.1f mm/s", motorConfig.maxEndEffectorVelocity * 1000.0f);
+    
+    ImGui::Separator();
+    ImGui::Text("Resolution:");
+    float stepsPerDegreeAtArm = (totalStepsPerRev * motorConfig.gearRatio) / 360.0f;
+    float degreesPerStepAtArm = 1.0f / stepsPerDegreeAtArm;
+    ImGui::BulletText("Total Steps/Rev (at arm): %.0f", totalStepsPerRev * motorConfig.gearRatio);
+    ImGui::BulletText("Steps per Degree (at arm): %.2f", stepsPerDegreeAtArm);
+    ImGui::BulletText("Degrees per Step (at arm): %.4f°", degreesPerStepAtArm);
+    
+    if (motorChanged) {
+        motorConfig.calculateDependentValues(robotConfig.upperArmLength);
+        for (int i = 0; i < 3; ++i) {
+            motorControl_.setMotorConfig(i, motorConfig);
+        }
+        motorControl_.updateVelocityLimits(robotConfig);
+    }
+    
+    ImGui::Separator();
+    if (ImGui::TreeNode("Individual Motor Adjustments")) {
+        for (int i = 0; i < 3; ++i) {
+            ImGui::PushID(i);
+            MotorConfig individualConfig = motorControl_.getMotorConfig(i);
+            bool individualChanged = false;
+            
+            ImGui::Text("Motor %d:", i + 1);
+            if (ImGui::Checkbox("Inverted", &individualConfig.inverted)) {
+                individualChanged = true;
+            }
+            
+            float homeOffset = individualConfig.homeOffset * 180.0f / M_PI;
+            if (ImGui::DragFloat("Home Offset (deg)", &homeOffset, 0.1f, -180.0f, 180.0f, "%.2f")) {
+                individualConfig.homeOffset = homeOffset * M_PI / 180.0f;
+                individualChanged = true;
+            }
+            
+            if (individualChanged) {
+                motorControl_.setMotorConfig(i, individualConfig);
+            }
+            ImGui::PopID();
+        }
+        ImGui::TreePop();
+    }
+}
+
+void RobotSetupPanel::renderWorkspaceTab() {
+    ImGui::Text("Workspace Information");
+    ImGui::Separator();
+    
+    float maxReach = robot_.getMaxReach();
+    float minHeight = robot_.getMinHeight();
+    float maxHeight = robot_.getMaxHeight();
+    
+    ImGui::Text("Workspace Bounds:");
+    ImGui::BulletText("Maximum Reach: %.3f m (%.1f cm)", maxReach, maxReach * 100.0f);
+    ImGui::BulletText("Height Range: %.3f m to %.3f m", minHeight, maxHeight);
+    ImGui::BulletText("Height Span: %.3f m (%.1f cm)", maxHeight - minHeight, (maxHeight - minHeight) * 100.0f);
+    
+    ImGui::Separator();
+    float workspaceVolume = (4.0f / 3.0f) * M_PI * maxReach * maxReach * (maxHeight - minHeight);
+    ImGui::Text("Workspace Volume:");
+    ImGui::BulletText("Volume: %.3f m³", workspaceVolume);
+    ImGui::BulletText("Volume: %.1f liters", workspaceVolume * 1000.0f);
+    
+    ImGui::Separator();
+    DeltaRobotConfig config = robot_.getConfig();
+    ImGui::Text("Current Configuration:");
+    ImGui::BulletText("Base Radius: %.3f m", config.baseRadius);
+    ImGui::BulletText("Effector Radius: %.3f m", config.effectorRadius);
+    ImGui::BulletText("Upper Arm: %.3f m", config.upperArmLength);
+    ImGui::BulletText("Lower Arm: %.3f m", config.lowerArmLength);
+    ImGui::BulletText("Motor Angle Range: %.1f° to %.1f°", 
+        config.minMotorAngle * 180.0f / M_PI,
+        config.maxMotorAngle * 180.0f / M_PI);
+    
+    ImGui::Separator();
+    MotorConfig motorConfig = motorControl_.getMotorConfig(0);
+    float totalStepsPerRev = motorConfig.stepsPerRevolution * motorConfig.microstepping * motorConfig.gearRatio;
+    float stepsPerMeter = totalStepsPerRev / (2.0f * M_PI * config.upperArmLength);
+    ImGui::Text("Motor Resolution:");
+    ImGui::BulletText("Steps per meter: %.0f", stepsPerMeter);
+    ImGui::BulletText("Position resolution: %.4f mm", 1000.0f / stepsPerMeter);
+}
+

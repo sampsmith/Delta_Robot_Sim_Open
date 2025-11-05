@@ -9,6 +9,11 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <cfloat>
+#include <memory>
+#include <string>
+#include <vector>
+#include <sstream>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -16,6 +21,10 @@
 
 #include "DeltaRobot.hpp"
 #include "Renderer.hpp"
+#include "MotorControl.hpp"
+#include "HardwareInterface.hpp"
+#include "SequenceController.hpp"
+#include "UIPanels.hpp"
 
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
@@ -26,8 +35,12 @@ GLFWwindow* g_window = nullptr;
 // Global state
 DeltaRobot robot;
 Renderer renderer;
-bool showControls = true;
-bool showRobotInfo = true;
+MotorControl motorControl;
+std::unique_ptr<HardwareInterface> hardwareInterface;
+SequenceController* sequenceController = nullptr;  // Will be initialized after hardwareInterface
+UIManager* uiManager = nullptr;  // Will be initialized after sequenceController
+
+// Display state
 bool showGrid = true;
 bool showAxes = true;
 
@@ -36,15 +49,6 @@ double lastMouseX = 0.0;
 double lastMouseY = 0.0;
 bool mouseLeftPressed = false;
 bool mouseRightPressed = false;
-
-// Virtual controller state
-bool controllerButtonXPos = false;
-bool controllerButtonXNeg = false;
-bool controllerButtonYPos = false;
-bool controllerButtonYNeg = false;
-bool controllerButtonZPos = false;
-bool controllerButtonZNeg = false;
-float controllerSpeed = 0.01f;  // Movement speed in m/s
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height) {
     renderer.setViewport(width, height);
@@ -130,6 +134,16 @@ int main() {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     
+    // Scale ImGui for high-DPI displays
+    // Get monitor DPI scale
+    float xscale, yscale;
+    glfwGetWindowContentScale(window, &xscale, &yscale);
+    float uiScale = (xscale + yscale) / 2.0f;
+    if (uiScale > 1.0f) {
+        ImGui::GetStyle().ScaleAllSizes(uiScale);
+        ImGui::GetIO().FontGlobalScale = uiScale;
+    }
+    
     ImGui::StyleColorsDark();
     
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -138,6 +152,43 @@ int main() {
     // Initial end effector position
     glm::vec3 endEffectorPos(0.0f, 0.0f, -0.35f);
     robot.setEndEffectorPosition(endEffectorPos);
+    
+    // Initialize motor control with default NEMA 23 configuration
+    // Standard NEMA 23: 200 steps/rev, 1/16 microstepping, 10:1 planetary gearbox
+    MotorConfig defaultConfig;
+    defaultConfig.stepsPerRevolution = 200;  // NEMA 23 standard: 1.8° per step
+    defaultConfig.microstepping = 16;         // 1/16 microstepping for smooth motion
+    defaultConfig.gearRatio = 10.0f;          // 10:1 planetary gearbox reduction
+    defaultConfig.maxMotorRPM = 600.0f;       // Maximum motor RPM (typical NEMA 23: 600-1200 RPM)
+    defaultConfig.acceleration = 500.0f;      // Acceleration (steps per second squared at motor)
+    defaultConfig.homeOffset = 0.0f;          // No offset initially
+    defaultConfig.inverted = false;            // Normal direction
+    
+    // Calculate dependent values (maxStepsPerSecond, maxArmAngularVelocity, etc.)
+    defaultConfig.calculateDependentValues(robot.getConfig().upperArmLength);
+    
+    for (int i = 0; i < 3; ++i) {
+        motorControl.setMotorConfig(i, defaultConfig);
+    }
+    
+    // Update velocity limits based on robot geometry
+    motorControl.updateVelocityLimits(robot.getConfig());
+    
+    // Initialize hardware interface (Ethernet for Teensy by default, can switch to Simulated)
+    // hardwareInterface = std::make_unique<SimulatedHardwareInterface>();
+    hardwareInterface = std::make_unique<EthernetHardwareInterface>();
+    
+    // Initialize sequence controller
+    sequenceController = new SequenceController(motorControl, hardwareInterface.get());
+    
+    // Initialize UI Manager
+    uiManager = new UIManager(robot, motorControl, hardwareInterface.get(), sequenceController, showGrid, showAxes);
+    if (uiScale > 1.0f) {
+        uiManager->setUIScale(uiScale);
+    }
+    
+    // Sync initial motor angles
+    motorControl.setTargetAngles(robot.getMotorAngles());
     
     // Main loop
     while (!glfwWindowShouldClose(window)) {
@@ -167,197 +218,121 @@ int main() {
         double deltaTime = currentTime - lastTime;
         lastTime = currentTime;
         
-        if (deltaTime > 0.0 && deltaTime < 0.1) {  // Limit delta time to prevent jumps
+        if (deltaTime > 0.0 && deltaTime < 0.1 && uiManager) {  // Limit delta time to prevent jumps
             glm::vec3 endEffectorPos = robot.getState().endEffectorPos;
             glm::vec3 delta(0.0f);
             
-            if (controllerButtonXPos) delta.x += controllerSpeed * (float)deltaTime;
-            if (controllerButtonXNeg) delta.x -= controllerSpeed * (float)deltaTime;
-            if (controllerButtonYPos) delta.y += controllerSpeed * (float)deltaTime;
-            if (controllerButtonYNeg) delta.y -= controllerSpeed * (float)deltaTime;
-            if (controllerButtonZPos) delta.z += controllerSpeed * (float)deltaTime;
-            if (controllerButtonZNeg) delta.z -= controllerSpeed * (float)deltaTime;
+            float controllerSpeed = uiManager->getControllerSpeed();
+            if (uiManager->getControllerButtonXPos()) delta.x += controllerSpeed * (float)deltaTime;
+            if (uiManager->getControllerButtonXNeg()) delta.x -= controllerSpeed * (float)deltaTime;
+            if (uiManager->getControllerButtonYPos()) delta.y += controllerSpeed * (float)deltaTime;
+            if (uiManager->getControllerButtonYNeg()) delta.y -= controllerSpeed * (float)deltaTime;
+            if (uiManager->getControllerButtonZPos()) delta.z += controllerSpeed * (float)deltaTime;
+            if (uiManager->getControllerButtonZNeg()) delta.z -= controllerSpeed * (float)deltaTime;
             
             if (glm::length(delta) > 0.0001f) {
                 glm::vec3 newPos = endEffectorPos + delta;
-                robot.setEndEffectorPosition(newPos);
-            }
-        }
-        
-        // Virtual Controller Panel
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(200, 300), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Virtual Controller", nullptr, ImGuiWindowFlags_NoResize);
-        
-        ImGui::Text("End Effector Control");
-        ImGui::Separator();
-        
-        // X Axis controls
-        ImGui::Text("X Axis:");
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
-        ImGui::Button("X+", ImVec2(80, 40));
-        controllerButtonXPos = ImGui::IsItemActive();
-        ImGui::PopStyleColor(3);
-        
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
-        ImGui::Button("X-", ImVec2(80, 40));
-        controllerButtonXNeg = ImGui::IsItemActive();
-        ImGui::PopStyleColor(3);
-        
-        ImGui::Spacing();
-        
-        // Y Axis controls
-        ImGui::Text("Y Axis:");
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 1.0f, 0.3f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.1f, 0.6f, 0.1f, 1.0f));
-        ImGui::Button("Y+", ImVec2(80, 40));
-        controllerButtonYPos = ImGui::IsItemActive();
-        ImGui::PopStyleColor(3);
-        
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.8f, 0.2f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 1.0f, 0.3f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.1f, 0.6f, 0.1f, 1.0f));
-        ImGui::Button("Y-", ImVec2(80, 40));
-        controllerButtonYNeg = ImGui::IsItemActive();
-        ImGui::PopStyleColor(3);
-        
-        ImGui::Spacing();
-        
-        // Z Axis controls
-        ImGui::Text("Z Axis:");
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.8f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 1.0f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.1f, 0.1f, 0.6f, 1.0f));
-        ImGui::Button("Z+", ImVec2(80, 40));
-        controllerButtonZPos = ImGui::IsItemActive();
-        ImGui::PopStyleColor(3);
-        
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.2f, 0.8f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 1.0f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.1f, 0.1f, 0.6f, 1.0f));
-        ImGui::Button("Z-", ImVec2(80, 40));
-        controllerButtonZNeg = ImGui::IsItemActive();
-        ImGui::PopStyleColor(3);
-        
-        ImGui::Separator();
-        ImGui::DragFloat("Speed", &controllerSpeed, 0.001f, 0.001f, 0.1f, "%.3f m/s");
-        
-        ImGui::End();
-        
-        // ImGui windows
-        if (showControls) {
-            ImGui::Begin("End Effector Control", &showControls);
-            
-            glm::vec3 pos = robot.getState().endEffectorPos;
-            float posArray[3] = { pos.x, pos.y, pos.z };
-            
-            ImGui::Text("Position (m):");
-            if (ImGui::DragFloat3("##Position", posArray, 0.01f, -1.0f, 1.0f)) {
-                glm::vec3 newPos(posArray[0], posArray[1], posArray[2]);
+                // Clamp to workspace to prevent stretching
+                newPos = robot.clampToWorkspace(newPos);
                 if (robot.setEndEffectorPosition(newPos)) {
-                    endEffectorPos = newPos;
+                    // Update motor control target only if position was successfully set
+                    motorControl.setTargetAngles(robot.getMotorAngles());
                 }
             }
-            
-            ImGui::Separator();
-            
-            ImGui::Text("Quick Movements:");
-            if (ImGui::Button("Centre")) {
-                endEffectorPos = glm::vec3(0.0f, 0.0f, -0.35f);
-                robot.setEndEffectorPosition(endEffectorPos);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Up")) {
-                endEffectorPos.z += 0.05f;
-                robot.setEndEffectorPosition(endEffectorPos);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Down")) {
-                endEffectorPos.z -= 0.05f;
-                robot.setEndEffectorPosition(endEffectorPos);
-            }
-            
-            ImGui::Separator();
-            
-            bool isValid = robot.getState().isValid;
-            if (isValid) {
-                ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Status: Valid Position");
-                
-                // Display motor angles
-                ImGui::Separator();
-                ImGui::Text("Motor Angles (degrees):");
-                const auto& motorAngles = robot.getMotorAngles();
-                for (int i = 0; i < 3; ++i) {
-                    float angleDeg = motorAngles[i] * 180.0f / M_PI;
-                    ImGui::Text("Motor %d: %.2f°", i + 1, angleDeg);
-                }
-            } else {
-                ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Status: Invalid Position");
-            }
-            
-            ImGui::End();
         }
         
-        if (showRobotInfo) {
-            ImGui::Begin("Robot Configuration", &showRobotInfo);
-            
-            DeltaRobotConfig config = robot.getConfig();
-            float configValues[4] = {
-                config.baseRadius,
-                config.effectorRadius,
-                config.upperArmLength,
-                config.lowerArmLength
-            };
-            const char* labels[] = { "Base Radius", "Effector Radius", "Upper Arm", "Lower Arm" };
-            
-            bool configChanged = false;
-            for (int i = 0; i < 4; ++i) {
-                if (ImGui::DragFloat(labels[i], &configValues[i], 0.01f, 0.01f, 1.0f)) {
-                    configChanged = true;
-                }
-            }
-            
-            if (configChanged) {
-                config.baseRadius = configValues[0];
-                config.effectorRadius = configValues[1];
-                config.upperArmLength = configValues[2];
-                config.lowerArmLength = configValues[3];
-                robot.setConfig(config);
-            }
-            
-            ImGui::Separator();
-            ImGui::Text("Workspace:");
-            ImGui::Text("Max Reach: %.3f m", robot.getMaxReach());
-            ImGui::Text("Height Range: %.3f to %.3f m", robot.getMinHeight(), robot.getMaxHeight());
-            
-            ImGui::End();
+        // Update motor control
+        motorControl.update(deltaTime);
+        
+        // Update sequence controller (handles playback and streaming)
+        if (sequenceController) {
+            sequenceController->update(deltaTime);
         }
         
-        // Display options
-        ImGui::Begin("Display Options");
-        ImGui::Checkbox("Show Grid", &showGrid);
-        ImGui::Checkbox("Show Axes", &showAxes);
-        ImGui::End();
+        // Sync robot visual position from motor control during sequence playback
+        // Interpolate between waypoint positions based on trajectory progress
+        if (sequenceController && sequenceController->getState() == PlaybackState::Playing) {
+            const auto& waypoints = motorControl.getWaypoints();
+            const auto& sequence = sequenceController->getSequence();
+            size_t currentSeqIdx = sequenceController->getCurrentSequenceIndex();
+            
+            if (currentSeqIdx < sequence.size()) {
+                size_t waypointIdx = sequence[currentSeqIdx];
+                if (waypointIdx < waypoints.size()) {
+                    const Waypoint& targetWP = waypoints[waypointIdx];
+                    
+                    // Get start position (from previous waypoint or current robot position)
+                    glm::vec3 startPos = robot.getState().endEffectorPos;
+                    if (currentSeqIdx > 0) {
+                        size_t prevIdx = sequence[currentSeqIdx - 1];
+                        if (prevIdx < waypoints.size()) {
+                            startPos = waypoints[prevIdx].endEffectorPos;
+                        }
+                    }
+                    
+                    // Get current motor angles to calculate interpolation factor
+                    const auto& motorStates = motorControl.getMotorStates();
+                    std::array<float, 3> currentAngles = {
+                        motorStates[0].currentAngle,
+                        motorStates[1].currentAngle,
+                        motorStates[2].currentAngle
+                    };
+                    
+                    // Calculate interpolation factor based on motor angle progress
+                    float totalAngleDiff = 0.0f;
+                    float remainingAngleDiff = 0.0f;
+                    for (int i = 0; i < 3; ++i) {
+                        float targetAngle = targetWP.motorAngles[i];
+                        float startAngle = (currentSeqIdx > 0 && sequence[currentSeqIdx - 1] < waypoints.size()) 
+                            ? waypoints[sequence[currentSeqIdx - 1]].motorAngles[i]
+                            : currentAngles[i];
+                        
+                        float totalDiff = std::abs(targetAngle - startAngle);
+                        float remainingDiff = std::abs(targetAngle - currentAngles[i]);
+                        totalAngleDiff += totalDiff;
+                        remainingAngleDiff += remainingDiff;
+                    }
+                    
+                    // Calculate interpolation factor (0 = at start, 1 = at target)
+                    float t = 0.0f;
+                    if (totalAngleDiff > 0.001f) {
+                        t = 1.0f - (remainingAngleDiff / totalAngleDiff);
+                        t = std::clamp(t, 0.0f, 1.0f);
+                    }
+                    
+                    // Interpolate position
+                    glm::vec3 interpolatedPos = startPos + (targetWP.endEffectorPos - startPos) * t;
+                    // Clamp to workspace to prevent stretching
+                    interpolatedPos = robot.clampToWorkspace(interpolatedPos);
+                    robot.setEndEffectorPosition(interpolatedPos);
+                }
+            }
+        }
         
-        // Camera controls info
-        ImGui::Begin("Controls");
-        ImGui::Text("Camera:");
-        ImGui::BulletText("Left Click + Drag: Rotate");
-        ImGui::BulletText("Right Click + Drag: Zoom");
-        ImGui::BulletText("Scroll Wheel: Zoom");
-        ImGui::Separator();
-        ImGui::Text("End Effector:");
-        ImGui::BulletText("Use Virtual Controller panel");
-        ImGui::BulletText("Press and hold X/Y/Z buttons");
-        ImGui::End();
+        // Sync motor control with hardware if connected and not playing sequence
+        // (Sequence controller handles hardware communication during playback)
+        bool hardwareConnected = uiManager ? uiManager->hardwareConnected() : false;
+        bool motorsEnabled = uiManager ? uiManager->motorsEnabled() : false;
+        if (hardwareConnected && motorsEnabled && 
+            (!sequenceController || sequenceController->getState() == PlaybackState::Stopped)) {
+            auto requiredSteps = motorControl.getRequiredSteps();
+            if (std::abs(requiredSteps[0]) > 0 || std::abs(requiredSteps[1]) > 0 || std::abs(requiredSteps[2]) > 0) {
+                hardwareInterface->moveMotorsRelative(requiredSteps);
+                // Update motor states from hardware feedback
+                std::array<int32_t, 3> positions;
+                if (hardwareInterface->getMotorPositions(positions)) {
+                    for (int i = 0; i < 3; ++i) {
+                        float angle = motorControl.stepsToAngle(i, positions[i]);
+                        // Note: This would need a method to set current angle directly
+                    }
+                }
+            }
+        }
+        
+        // Render UI using UIManager
+        if (uiManager) {
+            uiManager->render((float)deltaTime);
+        }
         
         // Render ImGui
         ImGui::Render();
@@ -372,6 +347,10 @@ int main() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+    
+    // Cleanup
+    delete uiManager;
+    delete sequenceController;
     
     renderer.shutdown();
     glfwTerminate();
