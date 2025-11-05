@@ -12,7 +12,7 @@ namespace DeltaRobotProtocol {
 
 // Packet types
 enum class PacketType : uint8_t {
-    // Commands (PC → Teensy)
+    // Commands (PC → NUCLEO-H7S3L8)
     CMD_MOVE_ABS = 0x01,
     CMD_MOVE_REL = 0x02,
     CMD_SET_SPEED = 0x03,
@@ -26,7 +26,7 @@ enum class PacketType : uint8_t {
     CMD_REQUEST_STATUS = 0x0B,
     CMD_SEQUENCE = 0x0C,  // Send waypoint sequence (all at once)
     
-    // Responses (Teensy → PC)
+    // Responses (NUCLEO-H7S3L8 → PC)
     RESP_OK = 0x80,
     RESP_ERROR = 0x81,
     RESP_STATUS = 0x82,

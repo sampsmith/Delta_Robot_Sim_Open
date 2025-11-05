@@ -45,7 +45,7 @@ void HardwarePanel::render() {
     ImGui::Separator();
     
     if (!hardwareConnected_) {
-        ImGui::Text("Connect to Teensy:");
+        ImGui::Text("Connect to NUCLEO-H7S3L8:");
         ImGui::InputText("IP Address", ipAddress_, sizeof(ipAddress_));
         ImGui::InputInt("Port", &port_);
         

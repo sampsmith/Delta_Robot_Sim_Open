@@ -144,248 +144,8 @@ bool SimulatedHardwareInterface::setMotorConfig(const MotorConfig& config, int m
     return true;
 }
 
-// Serial Hardware Interface Implementation
-SerialHardwareInterface::SerialHardwareInterface()
-    : connectionState_(ConnectionState::Disconnected)
-    , serialPort_(nullptr)
-{
-    // TODO: Initialize serial port library (e.g., libserial, boost::asio, etc.)
-}
-
-SerialHardwareInterface::~SerialHardwareInterface() {
-    disconnect();
-}
-
-bool SerialHardwareInterface::connect(const std::string& port) {
-    if (isConnected()) {
-        disconnect();
-    }
-    
-    connectionState_ = ConnectionState::Connecting;
-    
-    // TODO: Implement actual serial port connection
-    // Example using libserial or similar:
-    // serialPort_ = new SerialPort(port);
-    // if (!serialPort_->open()) {
-    //     connectionState_ = ConnectionState::Error;
-    //     if (onError_) onError_("Failed to open serial port");
-    //     return false;
-    // }
-    
-    std::cout << "[Serial] Connecting to " << port << " (not yet implemented)" << std::endl;
-    
-    // For now, simulate connection
-    connectionState_ = ConnectionState::Connected;
-    if (onConnected_) onConnected_();
-    
-    return true;
-}
-
-void SerialHardwareInterface::disconnect() {
-    if (serialPort_) {
-        // TODO: Close serial port
-        // delete serialPort_;
-        serialPort_ = nullptr;
-    }
-    connectionState_ = ConnectionState::Disconnected;
-    if (onDisconnected_) onDisconnected_();
-}
-
-bool SerialHardwareInterface::sendCommand(const std::string& command) {
-    if (!isConnected()) return false;
-    
-    // TODO: Send command over serial
-    // std::string cmd = command + "\n";
-    // serialPort_->write(cmd);
-    
-    std::cout << "[Serial] Sending: " << command << std::endl;
-    return true;
-}
-
-std::string SerialHardwareInterface::readResponse() {
-    if (!isConnected()) return "";
-    
-    // TODO: Read response from serial
-    // return serialPort_->readLine();
-    
-    return "OK";
-}
-
-bool SerialHardwareInterface::parseResponse(const std::string& response, bool& success) {
-    // Simple response parsing
-    success = (response.find("OK") != std::string::npos || 
-               response.find("ok") != std::string::npos);
-    return true;
-}
-
-bool SerialHardwareInterface::moveMotorsToSteps(const std::array<int32_t, 3>& targetSteps) {
-    if (!isConnected()) return false;
-    
-    std::ostringstream cmd;
-    cmd << "G1 X" << targetSteps[0] << " Y" << targetSteps[1] << " Z" << targetSteps[2];
-    
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    
-    return success;
-}
-
-bool SerialHardwareInterface::moveMotorsRelative(const std::array<int32_t, 3>& stepDeltas) {
-    if (!isConnected()) return false;
-    
-    std::ostringstream cmd;
-    cmd << "G91 G1 X" << stepDeltas[0] << " Y" << stepDeltas[1] << " Z" << stepDeltas[2];
-    
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    
-    return success;
-}
-
-bool SerialHardwareInterface::setMotorSpeed(int motorIndex, float speed) {
-    if (motorIndex < 0 || motorIndex >= 3) return false;
-    
-    std::ostringstream cmd;
-    cmd << "M203 S" << speed << " T" << motorIndex;
-    
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    
-    return success;
-}
-
-bool SerialHardwareInterface::setMotorAcceleration(int motorIndex, float acceleration) {
-    if (motorIndex < 0 || motorIndex >= 3) return false;
-    
-    std::ostringstream cmd;
-    cmd << "M204 A" << acceleration << " T" << motorIndex;
-    
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    
-    return success;
-}
-
-bool SerialHardwareInterface::enableMotors(bool enable) {
-    std::ostringstream cmd;
-    cmd << (enable ? "M17" : "M18");
-    
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    
-    return success;
-}
-
-bool SerialHardwareInterface::stopMotors() {
-    bool success = false;
-    if (sendCommand("M112")) {  // Emergency stop
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    return success;
-}
-
-bool SerialHardwareInterface::homeMotors() {
-    bool success = false;
-    if (sendCommand("G28")) {
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    return success;
-}
-
-bool SerialHardwareInterface::setMotorPosition(int motorIndex, int32_t steps) {
-    if (motorIndex < 0 || motorIndex >= 3) return false;
-    
-    std::ostringstream cmd;
-    char axis = 'X' + motorIndex;
-    cmd << "G92 " << axis << steps;
-    
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    
-    return success;
-}
-
-bool SerialHardwareInterface::getMotorPositions(std::array<int32_t, 3>& positions) {
-    bool success = false;
-    if (sendCommand("M114")) {  // Get position
-        std::string response = readResponse();
-        // TODO: Parse position from response
-        // Example: "X:100 Y:200 Z:300"
-        success = true;
-    }
-    return success;
-}
-
-bool SerialHardwareInterface::getMotorStates(std::array<bool, 3>& isMoving) {
-    // TODO: Implement status query
-    return false;
-}
-
-bool SerialHardwareInterface::setMicrostepping(int motorIndex, int microsteps) {
-    if (motorIndex < 0 || motorIndex >= 3) return false;
-    
-    std::ostringstream cmd;
-    cmd << "M350 S" << microsteps << " T" << motorIndex;
-    
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
-    }
-    
-    return success;
-}
-
-bool SerialHardwareInterface::setMotorConfig(const MotorConfig& config, int motorIndex) {
-    // Set multiple parameters
-    bool success = true;
-    success &= setMicrostepping(motorIndex, config.microstepping);
-    success &= setMotorSpeed(motorIndex, config.maxStepsPerSecond);
-    success &= setMotorAcceleration(motorIndex, config.acceleration);
-    return success;
-}
-
-bool SerialHardwareInterface::sendWaypointSequence(const std::vector<std::pair<std::array<int32_t, 3>, uint16_t>>& waypoints) {
-    // Serial interface doesn't support sequence packets yet
-    // Fall back to sending waypoints one-by-one
-    bool success = true;
-    for (const auto& wp : waypoints) {
-        success &= moveMotorsToSteps(wp.first);
-        if (!success) break;
-        // TODO: Wait for duration or use delay
-    }
-    return success;
-}
-
-std::vector<std::string> SerialHardwareInterface::getAvailablePorts() const {
-    // TODO: Implement port enumeration
-    // This would typically use OS-specific APIs or libraries
-    std::vector<std::string> ports;
-    // Example: ports.push_back("/dev/ttyUSB0");
-    // Example: ports.push_back("/dev/ttyACM0");
-    // Example: ports.push_back("COM3");
-    return ports;
-}
+// Serial Hardware Interface removed - was using G-code
+// If needed in the future, implement using binary protocol instead
 
 // Ethernet Hardware Interface Implementation
 EthernetHardwareInterface::EthernetHardwareInterface()
@@ -526,28 +286,6 @@ void EthernetHardwareInterface::disconnect() {
     if (onDisconnected_) onDisconnected_();
 }
 
-bool EthernetHardwareInterface::sendCommand(const std::string& command) {
-    if (!isConnected()) return false;
-    
-    int& sockfd = *static_cast<int*>(socketHandle_);
-    std::string cmd = command + "\n";
-    
-    ssize_t sent = send(sockfd, cmd.c_str(), cmd.length(), 0);
-    if (sent < 0) {
-        connectionState_ = ConnectionState::Error;
-        if (onError_) onError_("Send failed");
-        return false;
-    }
-    
-    return true;
-}
-
-std::string EthernetHardwareInterface::readResponse() {
-    // Legacy method for text-based responses (kept for compatibility)
-    std::vector<uint8_t> binary = readBinaryResponse();
-    return std::string(binary.begin(), binary.end());
-}
-
 std::vector<uint8_t> EthernetHardwareInterface::readBinaryResponse() {
     std::vector<uint8_t> response;
     if (!isConnected()) return response;
@@ -594,29 +332,6 @@ std::vector<uint8_t> EthernetHardwareInterface::readBinaryResponse() {
     }
     
     return response;
-}
-
-bool EthernetHardwareInterface::parseResponse(const std::string& response, bool& success) {
-    // Parse response format: "OK" or "ERR:message"
-    if (response.empty()) {
-        success = false;
-        return false;
-    }
-    
-    if (response.find("OK") == 0 || response.find("ok") == 0) {
-        success = true;
-        return true;
-    } else if (response.find("ERR:") == 0) {
-        success = false;
-        if (onError_) onError_(response.substr(4));
-        return true;
-    }
-    
-    // Try to parse as position report: "POS X:100 Y:200 Z:300"
-    // This is handled in getMotorPositions
-    
-    success = true;
-    return true;
 }
 
 bool EthernetHardwareInterface::moveMotorsToSteps(const std::array<int32_t, 3>& targetSteps) {
@@ -704,33 +419,57 @@ bool EthernetHardwareInterface::moveMotorsRelative(const std::array<int32_t, 3>&
 }
 
 bool EthernetHardwareInterface::setMotorSpeed(int motorIndex, float speed) {
-    if (motorIndex < 0 || motorIndex >= 3) return false;
+    if (motorIndex < 0 || motorIndex >= 3 || !isConnected()) return false;
     
-    std::ostringstream cmd;
-    cmd << "M203 S" << (int)speed << " T" << motorIndex;
+    // Use binary protocol instead of G-code
+    using namespace DeltaRobotProtocol;
+    Packet packet = Commands::setSpeed(motorIndex, speed);
+    std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
+    int& sockfd = *static_cast<int*>(socketHandle_);
+    ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+    if (sent < 0) {
+        connectionState_ = ConnectionState::Error;
+        if (onError_) onError_("Send speed command failed");
+        return false;
     }
     
-    return success;
+    std::vector<uint8_t> response = readBinaryResponse();
+    if (!response.empty()) {
+        Packet respPacket;
+        if (PacketEncoder::decode(response, respPacket)) {
+            return respPacket.type == PacketType::RESP_OK;
+        }
+    }
+    
+    return false;
 }
 
 bool EthernetHardwareInterface::setMotorAcceleration(int motorIndex, float acceleration) {
-    if (motorIndex < 0 || motorIndex >= 3) return false;
+    if (motorIndex < 0 || motorIndex >= 3 || !isConnected()) return false;
     
-    std::ostringstream cmd;
-    cmd << "M204 A" << (int)acceleration << " T" << motorIndex;
+    // Use binary protocol instead of G-code
+    using namespace DeltaRobotProtocol;
+    Packet packet = Commands::setAcceleration(motorIndex, acceleration);
+    std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
+    int& sockfd = *static_cast<int*>(socketHandle_);
+    ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+    if (sent < 0) {
+        connectionState_ = ConnectionState::Error;
+        if (onError_) onError_("Send acceleration command failed");
+        return false;
     }
     
-    return success;
+    std::vector<uint8_t> response = readBinaryResponse();
+    if (!response.empty()) {
+        Packet respPacket;
+        if (PacketEncoder::decode(response, respPacket)) {
+            return respPacket.type == PacketType::RESP_OK;
+        }
+    }
+    
+    return false;
 }
 
 bool EthernetHardwareInterface::enableMotors(bool enable) {
@@ -760,37 +499,86 @@ bool EthernetHardwareInterface::enableMotors(bool enable) {
 }
 
 bool EthernetHardwareInterface::stopMotors() {
-    bool success = false;
-    if (sendCommand("M112")) {  // Emergency stop
-        std::string response = readResponse();
-        parseResponse(response, success);
+    if (!isConnected()) return false;
+    
+    // Use binary protocol instead of G-code
+    using namespace DeltaRobotProtocol;
+    Packet packet = Commands::stop();
+    std::vector<uint8_t> data = PacketEncoder::encode(packet);
+    
+    int& sockfd = *static_cast<int*>(socketHandle_);
+    ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+    if (sent < 0) {
+        connectionState_ = ConnectionState::Error;
+        if (onError_) onError_("Send stop command failed");
+        return false;
     }
-    return success;
+    
+    std::vector<uint8_t> response = readBinaryResponse();
+    if (!response.empty()) {
+        Packet respPacket;
+        if (PacketEncoder::decode(response, respPacket)) {
+            return respPacket.type == PacketType::RESP_OK;
+        }
+    }
+    
+    return false;
 }
 
 bool EthernetHardwareInterface::homeMotors() {
-    bool success = false;
-    if (sendCommand("G28")) {
-        std::string response = readResponse();
-        parseResponse(response, success);
+    if (!isConnected()) return false;
+    
+    // Use binary protocol instead of G-code
+    using namespace DeltaRobotProtocol;
+    Packet packet = Commands::home();
+    std::vector<uint8_t> data = PacketEncoder::encode(packet);
+    
+    int& sockfd = *static_cast<int*>(socketHandle_);
+    ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+    if (sent < 0) {
+        connectionState_ = ConnectionState::Error;
+        if (onError_) onError_("Send home command failed");
+        return false;
     }
-    return success;
+    
+    // Read response - could be RESP_OK (homing started) or RESP_HOMED (homing complete)
+    std::vector<uint8_t> response = readBinaryResponse();
+    if (!response.empty()) {
+        Packet respPacket;
+        if (PacketEncoder::decode(response, respPacket)) {
+            return respPacket.type == PacketType::RESP_OK || 
+                   respPacket.type == PacketType::RESP_HOMED;
+        }
+    }
+    
+    return false;
 }
 
 bool EthernetHardwareInterface::setMotorPosition(int motorIndex, int32_t steps) {
-    if (motorIndex < 0 || motorIndex >= 3) return false;
+    if (motorIndex < 0 || motorIndex >= 3 || !isConnected()) return false;
     
-    std::ostringstream cmd;
-    char axis = 'X' + motorIndex;
-    cmd << "G92 " << axis << steps;
+    // Use binary protocol instead of G-code
+    using namespace DeltaRobotProtocol;
+    Packet packet = Commands::setPosition(motorIndex, steps);
+    std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
+    int& sockfd = *static_cast<int*>(socketHandle_);
+    ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+    if (sent < 0) {
+        connectionState_ = ConnectionState::Error;
+        if (onError_) onError_("Send set position command failed");
+        return false;
     }
     
-    return success;
+    std::vector<uint8_t> response = readBinaryResponse();
+    if (!response.empty()) {
+        Packet respPacket;
+        if (PacketEncoder::decode(response, respPacket)) {
+            return respPacket.type == PacketType::RESP_OK;
+        }
+    }
+    
+    return false;
 }
 
 bool EthernetHardwareInterface::getMotorPositions(std::array<int32_t, 3>& positions) {
@@ -830,26 +618,84 @@ bool EthernetHardwareInterface::getMotorStates(std::array<bool, 3>& isMoving) {
 }
 
 bool EthernetHardwareInterface::setMicrostepping(int motorIndex, int microsteps) {
-    if (motorIndex < 0 || motorIndex >= 3) return false;
+    if (motorIndex < 0 || motorIndex >= 3 || !isConnected()) return false;
     
-    std::ostringstream cmd;
-    cmd << "M350 S" << microsteps << " T" << motorIndex;
+    // Use CMD_CONFIG to set microstepping along with other parameters
+    // For microstepping-only change, we'll use the current config values
+    // This is a limitation - ideally we'd have a separate CMD_SET_MICROSTEPPING
+    // For now, use CMD_CONFIG with current speed/accel and new microstepping
+    // Note: This requires knowing current speed/accel, which we don't track
+    // Better approach: Use CMD_CONFIG with reasonable defaults
+    // Or: Add CMD_SET_MICROSTEPPING to protocol (future enhancement)
     
-    bool success = false;
-    if (sendCommand(cmd.str())) {
-        std::string response = readResponse();
-        parseResponse(response, success);
+    // For now, use CMD_CONFIG with default values (will be overwritten by setMotorConfig)
+    using namespace DeltaRobotProtocol;
+    // Default values if not known - these should be set via setMotorConfig instead
+    float defaultSpeed = 32000.0f;  // Conservative default (320,000 is max, use 32,000 for safety)
+    float defaultAccel = 500.0f;
+    Packet packet = Commands::setConfig(motorIndex, defaultSpeed, defaultAccel, static_cast<uint8_t>(microsteps));
+    std::vector<uint8_t> data = PacketEncoder::encode(packet);
+    
+    int& sockfd = *static_cast<int*>(socketHandle_);
+    ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+    if (sent < 0) {
+        connectionState_ = ConnectionState::Error;
+        if (onError_) onError_("Send microstepping config failed");
+        return false;
     }
     
-    return success;
+    std::vector<uint8_t> response = readBinaryResponse();
+    if (!response.empty()) {
+        Packet respPacket;
+        if (PacketEncoder::decode(response, respPacket)) {
+            return respPacket.type == PacketType::RESP_OK;
+        }
+    }
+    
+    return false;
 }
 
 bool EthernetHardwareInterface::setMotorConfig(const MotorConfig& config, int motorIndex) {
-    // Set multiple parameters
-    bool success = true;
-    success &= setMicrostepping(motorIndex, config.microstepping);
-    success &= setMotorSpeed(motorIndex, config.maxStepsPerSecond);
-    success &= setMotorAcceleration(motorIndex, config.acceleration);
-    return success;
+    if (motorIndex < 0 || motorIndex >= 3 || !isConnected()) return false;
+    
+    // Use CMD_CONFIG to set all parameters at once (more efficient than separate commands)
+    // This ensures all settings are applied atomically
+    using namespace DeltaRobotProtocol;
+    
+    // Validate and clamp speed to realistic hardware limits
+    // 320,000 steps/sec is theoretical max, but real hardware may be slower
+    // Limit to reasonable maximum for safety (e.g., 100,000 steps/sec)
+    float maxRealisticSpeed = 100000.0f;  // 100k steps/sec is very fast but achievable
+    float clampedSpeed = std::min(config.maxStepsPerSecond, maxRealisticSpeed);
+    
+    // Clamp acceleration to reasonable limits (e.g., 10,000 steps/sec²)
+    float maxRealisticAccel = 10000.0f;
+    float clampedAccel = std::min(config.acceleration, maxRealisticAccel);
+    
+    Packet packet = Commands::setConfig(
+        motorIndex, 
+        clampedSpeed, 
+        clampedAccel, 
+        static_cast<uint8_t>(config.microstepping)
+    );
+    std::vector<uint8_t> data = PacketEncoder::encode(packet);
+    
+    int& sockfd = *static_cast<int*>(socketHandle_);
+    ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+    if (sent < 0) {
+        connectionState_ = ConnectionState::Error;
+        if (onError_) onError_("Send motor config failed");
+        return false;
+    }
+    
+    std::vector<uint8_t> response = readBinaryResponse();
+    if (!response.empty()) {
+        Packet respPacket;
+        if (PacketEncoder::decode(response, respPacket)) {
+            return respPacket.type == PacketType::RESP_OK;
+        }
+    }
+    
+    return false;
 }
 

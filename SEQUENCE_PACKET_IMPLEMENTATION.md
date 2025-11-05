@@ -2,7 +2,7 @@
 
 ## ✅ Implementation Complete
 
-The system now sends **waypoint sequences in a single packet** to the Teensy, which matches production motion control systems.
+The system now sends **waypoint sequences in a single packet** to the NUCLEO-H7S3L8, which matches production motion control systems.
 
 ---
 
@@ -76,7 +76,7 @@ namespace Commands {
 1. Build sequence data with step positions + durations
 2. Apply speed multiplier to durations
 3. Send entire sequence in ONE packet
-4. Teensy receives all waypoints and executes sequence
+4. NUCLEO-H7S3L8 receives all waypoints and executes sequence
 ```
 
 **Real-Time Mode (Debugging):**
@@ -95,12 +95,12 @@ namespace Commands {
    - 90% bandwidth reduction!
 
 2. **Robust**
-   - Teensy stores sequence in buffer
+   - NUCLEO-H7S3L8 stores sequence in buffer
    - Can handle network hiccups
    - Sequence execution continues even if connection drops
 
 3. **Efficient**
-   - Teensy can optimize motion planning
+   - NUCLEO-H7S3L8 can optimize motion planning
    - Knows full sequence ahead of time
    - Can calculate optimal acceleration profiles
 
@@ -167,9 +167,9 @@ Last Byte: Checksum (XOR of all previous bytes)
 
 ---
 
-## Teensy Firmware Requirements
+## NUCLEO-H7S3L8 Firmware Requirements
 
-**The Teensy firmware needs to:**
+**The NUCLEO-H7S3L8 firmware needs to:**
 
 1. **Parse CMD_SEQUENCE packet:**
    ```cpp
@@ -205,7 +205,7 @@ Last Byte: Checksum (XOR of all previous bytes)
 **Speed multiplier is applied BEFORE sending:**
 - 2.0x speed = durations halved
 - 0.5x speed = durations doubled
-- Duration sent to Teensy is already adjusted
+- Duration sent to NUCLEO-H7S3L8 is already adjusted
 
 **Example:**
 - Original duration: 2.0 seconds (2000ms)
@@ -218,16 +218,16 @@ Last Byte: Checksum (XOR of all previous bytes)
 
 ### **Before (One-by-One):**
 ```
-PC → Teensy: CMD_MOVE_ABS (waypoint 1)
-PC → Teensy: CMD_MOVE_ABS (waypoint 2)
-PC → Teensy: CMD_MOVE_ABS (waypoint 3)
+PC → NUCLEO-H7S3L8: CMD_MOVE_ABS (waypoint 1)
+PC → NUCLEO-H7S3L8: CMD_MOVE_ABS (waypoint 2)
+PC → NUCLEO-H7S3L8: CMD_MOVE_ABS (waypoint 3)
 ...
 10 packets for 10 waypoints
 ```
 
 ### **After (Sequence Packet):**
 ```
-PC → Teensy: CMD_SEQUENCE (all 10 waypoints)
+PC → NUCLEO-H7S3L8: CMD_SEQUENCE (all 10 waypoints)
 1 packet for 10 waypoints ✅
 ```
 
@@ -243,5 +243,5 @@ PC → Teensy: CMD_SEQUENCE (all 10 waypoints)
 
 **Your system now matches production motion control systems!** 🎯
 
-The Teensy firmware just needs to parse the CMD_SEQUENCE packet and execute the waypoints in order. The PC software handles all the calculations and sends everything ready to execute.
+The NUCLEO-H7S3L8 firmware just needs to parse the CMD_SEQUENCE packet and execute the waypoints in order. The PC software handles all the calculations and sends everything ready to execute.
 

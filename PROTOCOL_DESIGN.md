@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the binary protocol for direct communication between the Delta Robot Simulator and Teensy firmware. The protocol is designed for efficient, real-time control of 3 stepper motors with minimal overhead.
+This document outlines the binary protocol for direct communication between the Delta Robot Simulator and NUCLEO-H7S3L8 firmware. The protocol is designed for efficient, real-time control of 3 stepper motors with minimal overhead.
 
 ## Design Philosophy
 
@@ -28,7 +28,7 @@ This document outlines the binary protocol for direct communication between the 
 
 ### Packet Types
 
-#### Command Packets (PC → Teensy)
+#### Command Packets (PC → NUCLEO-H7S3L8)
 
 | Type | Value | Description |
 |------|-------|-------------|
@@ -44,7 +44,7 @@ This document outlines the binary protocol for direct communication between the 
 | CMD_PING | 0x0A | Keep-alive/heartbeat |
 | CMD_REQUEST_STATUS | 0x0B | Request position/status update |
 
-#### Response Packets (Teensy → PC)
+#### Response Packets (NUCLEO-H7S3L8 → PC)
 
 | Type | Value | Description |
 |------|-------|-------------|
@@ -251,15 +251,15 @@ Homing sequence completed. Contains final positions (typically 0,0,0).
 
 1. **PC calculates target positions** from kinematics
 2. **PC sends CMD_MOVE_ABS** with target step positions
-3. **Teensy receives command** and starts coordinated movement
-4. **Teensy responds with RESP_OK** (acknowledgment)
-5. **Teensy sends periodic RESP_STATUS** updates (e.g., every 100ms)
+3. **NUCLEO-H7S3L8 receives command** and starts coordinated movement
+4. **NUCLEO-H7S3L8 responds with RESP_OK** (acknowledgment)
+5. **NUCLEO-H7S3L8 sends periodic RESP_STATUS** updates (e.g., every 100ms)
 6. **PC updates motor states** based on feedback
 7. **Repeat** as new positions are calculated
 
 ### Status Updates
 
-Teensy should send RESP_STATUS packets:
+NUCLEO-H7S3L8 should send RESP_STATUS packets:
 - Periodically (e.g., every 100ms) during movement
 - When movement completes
 - In response to CMD_REQUEST_STATUS
@@ -352,42 +352,50 @@ packet[packet_length - 1] = checksum;
 
 ---
 
-## Teensy Firmware Architecture
+## NUCLEO-H7S3L8 Firmware Architecture
 
 ### Recommended Structure
 
-1. **Ethernet Server**: Accept connections, handle TCP streams
+1. **LwIP Ethernet Server**: Accept connections, handle TCP streams
 2. **Packet Parser**: Parse incoming binary packets
 3. **Command Handler**: Process commands and execute motor control
-4. **Motor Controller**: MultiStepper for coordinated motion
+4. **Motor Controller**: Timer-based coordinated motion
 5. **Status Reporter**: Send periodic status updates
 6. **State Machine**: Track motor states, movement status
 
 ### Control Loop
 
-```cpp
-void loop() {
-    // Handle Ethernet connections
-    handleEthernet();
+```c
+int main(void) {
+    // HAL initialization
+    HAL_Init();
+    MX_LWIP_Init();
+    // ... other init
     
-    // Parse incoming packets
-    if (packetAvailable()) {
-        parseAndExecute();
-    }
-    
-    // Run steppers (non-blocking)
-    steppers.run();
-    
-    // Send status updates periodically
-    if (millis() - lastStatusUpdate > 100) {
-        sendStatus();
-        lastStatusUpdate = millis();
-    }
-    
-    // Handle keep-alive
-    if (millis() - lastPing > 5000) {
-        sendPing();
-        lastPing = millis();
+    while (1) {
+        // Handle Ethernet connections (LwIP)
+        MX_LWIP_Process();
+        
+        // Parse incoming packets
+        if (packet_available()) {
+            parse_and_execute();
+        }
+        
+        // Update motors (non-blocking)
+        motor_update();
+        
+        // Send status updates periodically
+        uint32_t now = HAL_GetTick();
+        if (now - last_status_update > 100) {
+            status_send_update();
+            last_status_update = now;
+        }
+        
+        // Handle keep-alive
+        if (now - last_ping > 5000) {
+            // Check connection health
+            last_ping = now;
+        }
     }
 }
 ```
@@ -407,9 +415,9 @@ void loop() {
 
 ## Next Steps
 
-1. Implement packet encoding/decoding in C++ software
-2. Update EthernetHardwareInterface to use binary protocol
-3. Create Teensy firmware template with packet parser
+1. Implement packet encoding/decoding in C++ software ✅ Complete
+2. Update EthernetHardwareInterface to use binary protocol ✅ Complete
+3. Create NUCLEO-H7S3L8 firmware template with packet parser (see NUCLEO_FIRMWARE_OUTLINE.md)
 4. Add error handling and recovery
 5. Test with simulated hardware first
 6. Validate with real hardware

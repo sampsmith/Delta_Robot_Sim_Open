@@ -62,10 +62,10 @@ The Delta Robot Simulator serves as both:
               Ethernet (TCP/IP)
                      │
 ┌────────────────────▼────────────────────────────────────┐
-│              Teensy 4.1 Firmware                        │
+│              NUCLEO-H7S3L8 Firmware                    │
 │  • Packet Reception & Parsing                           │
 │  • Stepper Motor Control (3× NEMA 23)                  │
-│  • Coordinated Movement (MultiStepper)                  │
+│  • Coordinated Movement (Timer-based)                   │
 │  • Position Feedback                                    │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -140,11 +140,11 @@ Steps = (angle / 2π) × stepsPerRevolution × microstepping × gearRatio
 
 ### 4. Hardware Interface (`HardwareInterface.hpp/cpp`)
 
-**Purpose**: Communicate with Teensy firmware via Ethernet
+**Purpose**: Communicate with NUCLEO-H7S3L8 firmware via Ethernet
 
 **Key Features**:
 - **Abstract Interface**: Base class for different hardware types
-- **Ethernet Interface**: TCP/IP communication with Teensy
+- **Ethernet Interface**: TCP/IP communication with NUCLEO-H7S3L8
 - **Simulated Interface**: For testing without hardware
 - **Binary Protocol**: Efficient packet-based communication
 - **Connection Management**: Connect/disconnect, status monitoring
@@ -357,9 +357,9 @@ Steps = (angle / 2π) × stepsPerRevolution × microstepping × gearRatio
 
 1. PC calculates target positions from kinematics
 2. PC sends `CMD_MOVE_ABS` with target step positions
-3. Teensy receives command and starts coordinated movement
-4. Teensy responds with `RESP_OK` (acknowledgment)
-5. Teensy sends periodic `RESP_STATUS` updates (every 100ms)
+3. NUCLEO-H7S3L8 receives command and starts coordinated movement
+4. NUCLEO-H7S3L8 responds with `RESP_OK` (acknowledgment)
+5. NUCLEO-H7S3L8 sends periodic `RESP_STATUS` updates (every 100ms)
 6. PC updates motor states based on feedback
 7. Repeat as new positions are calculated
 
@@ -379,7 +379,7 @@ Steps = (angle / 2π) × stepsPerRevolution × microstepping × gearRatio
 - Current rating: Match motor current requirements
 
 **Controller**:
-- Teensy 4.1 (with Ethernet)
+- NUCLEO-H7S3L8 (with built-in Ethernet)
 - 3× step/direction pins, 3× enable pins
 - Optional: End-stop switches for homing
 
@@ -387,7 +387,7 @@ Steps = (angle / 2π) × stepsPerRevolution × microstepping × gearRatio
 - Sufficient voltage for motors (12-24V)
 - Current rating: 3× motor current + headroom
 
-### Pin Configuration (Teensy)
+### Pin Configuration (NUCLEO-H7S3L8)
 
 **Motor 1**:
 - STEP → Pin 2
@@ -416,7 +416,7 @@ Steps = (angle / 2π) × stepsPerRevolution × microstepping × gearRatio
 
 ---
 
-## Teensy Firmware
+## NUCLEO-H7S3L8 Firmware
 
 ### Architecture
 
@@ -529,7 +529,7 @@ make
 
 4. **Connect Hardware**:
    - Open "Hardware Interface" panel
-   - Enter Teensy IP address (e.g., `192.168.1.100`)
+   - Enter NUCLEO-H7S3L8 IP address (e.g., `192.168.1.100`)
    - Click "Connect"
    - Click "Enable Motors" (in Motor Control panel)
 
@@ -630,11 +630,11 @@ Delta_Robot_Sim_Open/
 - **Networking**: Standard C++ sockets (TCP/IP)
 - **Build System**: CMake
 
-### Firmware Side (Teensy)
-- **Platform**: Teensy 4.1
-- **Language**: Arduino C++ (C++ with Arduino libraries)
-- **Motor Control**: AccelStepper + MultiStepper
-- **Networking**: NativeEthernet (Teensy)
+### Firmware Side (NUCLEO-H7S3L8)
+- **Platform**: NUCLEO-H7S3L8 (STM32H7S3L8H6)
+- **Language**: C (with STM32 HAL)
+- **Motor Control**: STM32 HAL Timers
+- **Networking**: LwIP (STM32)
 - **Protocol**: Binary packet-based
 
 ---
@@ -684,7 +684,7 @@ This is a **complete, production-ready software suite** that:
 ✅ Provides full-featured UI for control and monitoring  
 ✅ Is designed for custom robot solutions  
 ✅ Includes comprehensive documentation  
-✅ Ready for hardware integration with Teensy 4.1  
+✅ Ready for hardware integration with NUCLEO-H7S3L8  
 
 The system is designed to be:
 - **Efficient**: Binary protocol, optimized data flow

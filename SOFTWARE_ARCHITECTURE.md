@@ -43,7 +43,7 @@ This document describes the complete software architecture for the Delta Robot c
               Ethernet (TCP/IP)
                      │
 ┌────────────────────▼────────────────────────────────────┐
-│              Teensy Firmware                             │
+│              NUCLEO-H7S3L8 Firmware                     │
 │  - Packet Reception                                      │
 │  - Stepper Motor Control                                 │
 │  - Coordinated Movement                                  │
@@ -123,7 +123,7 @@ This document describes the complete software architecture for the Delta Robot c
 
 ### 4. Hardware Interface
 
-**Purpose**: Communicate with Teensy firmware
+**Purpose**: Communicate with NUCLEO-H7S3L8 firmware
 
 **Responsibilities**:
 - Encode commands into binary packets
@@ -161,13 +161,13 @@ This document describes the complete software architecture for the Delta Robot c
    → Binary packet (CMD_MOVE_ABS)
    ↓
 6. Ethernet transmission
-   → TCP/IP to Teensy
+   → TCP/IP to NUCLEO-H7S3L8
    ↓
-7. Teensy firmware receives packet
+7. NUCLEO-H7S3L8 firmware receives packet
    → Parses step positions
    → Moves motors simultaneously
    ↓
-8. Teensy sends status update
+8. NUCLEO-H7S3L8 sends status update
    → RESP_STATUS with current positions
    ↓
 9. HardwareInterface parses response
@@ -229,7 +229,7 @@ This document describes the complete software architecture for the Delta Robot c
 
 **Advantages**:
 - Can adjust trajectory in real-time
-- Lower memory usage on Teensy
+- Lower memory usage on NUCLEO-H7S3L8
 - More responsive to changes
 
 **Use case**: General purpose, dynamic control
@@ -238,11 +238,11 @@ This document describes the complete software architecture for the Delta Robot c
 
 **How it works**:
 - Entire trajectory sent at once
-- Teensy executes from buffer
+- NUCLEO-H7S3L8 executes from buffer
 - Higher memory usage
 
 **Advantages**:
-- Teensy can optimize path
+- NUCLEO-H7S3L8 can optimize path
 - Less network traffic
 - Good for complex paths
 
@@ -356,7 +356,7 @@ This architecture provides:
 ✅ **Waypoint System**: Create, edit, sequence waypoints
 ✅ **Looping**: Repeat sequences infinitely or N times
 ✅ **Streaming**: Real-time or batch trajectory execution
-✅ **Hardware Integration**: Direct Teensy communication
+✅ **Hardware Integration**: Direct NUCLEO-H7S3L8 communication
 ✅ **Visualization**: 3D robot visualization with path preview
 
 The system is designed to be:

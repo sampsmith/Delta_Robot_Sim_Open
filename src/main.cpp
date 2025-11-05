@@ -174,7 +174,7 @@ int main() {
     // Update velocity limits based on robot geometry
     motorControl.updateVelocityLimits(robot.getConfig());
     
-    // Initialize hardware interface (Ethernet for Teensy by default, can switch to Simulated)
+    // Initialize hardware interface (Ethernet for NUCLEO-H7S3L8 by default, can switch to Simulated)
     // hardwareInterface = std::make_unique<SimulatedHardwareInterface>();
     hardwareInterface = std::make_unique<EthernetHardwareInterface>();
     

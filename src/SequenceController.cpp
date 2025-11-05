@@ -52,15 +52,59 @@ bool SequenceController::play() {
         std::vector<std::pair<std::array<int32_t, 3>, uint16_t>> sequenceData;
         
         // Build sequence data with step positions and durations
-        for (size_t idx : currentSequence_) {
+        // Calculate durations based on step distances and motor speed limits
+        std::array<int32_t, 3> previousSteps = {0, 0, 0};
+        if (currentSequence_.size() > 0 && currentSequence_[0] < waypoints.size()) {
+            // Get current motor positions as starting point
+            const auto& motorStates = motorControl_.getMotorStates();
+            for (int i = 0; i < 3; ++i) {
+                previousSteps[i] = motorStates[i].currentSteps;
+            }
+        }
+        
+        for (size_t seqIdx = 0; seqIdx < currentSequence_.size(); ++seqIdx) {
+            size_t idx = currentSequence_[seqIdx];
             if (idx >= waypoints.size()) continue;
             const Waypoint& wp = waypoints[idx];
             
-            // Apply speed multiplier to duration, convert to milliseconds
+            // Calculate step distance for each motor
+            std::array<int32_t, 3> stepDistances;
+            float maxRequiredSpeed = 0.0f;
+            for (int i = 0; i < 3; ++i) {
+                stepDistances[i] = std::abs(wp.stepPositions[i] - previousSteps[i]);
+                
+                // Calculate minimum duration based on motor max speed
+                const auto& motorConfig = motorControl_.getMotorConfig(i);
+                if (stepDistances[i] > 0 && motorConfig.maxStepsPerSecond > 0.0f) {
+                    // Minimum time = distance / max_speed
+                    float minDuration = static_cast<float>(stepDistances[i]) / motorConfig.maxStepsPerSecond;
+                    maxRequiredSpeed = std::max(maxRequiredSpeed, minDuration);
+                }
+            }
+            
+            // Apply speed multiplier to user-specified duration
             float adjustedDuration = wp.duration / config_.speedMultiplier;
+            
+            // Ensure duration is at least the minimum required for motor speed limits
+            // Add 10% safety margin
+            float minDurationWithMargin = maxRequiredSpeed * 1.1f;
+            if (adjustedDuration < minDurationWithMargin) {
+                adjustedDuration = minDurationWithMargin;
+                std::cout << "[Sequence] Warning: Waypoint " << idx 
+                          << " duration too short, adjusted to " << adjustedDuration 
+                          << "s (minimum: " << minDurationWithMargin << "s)" << std::endl;
+            }
+            
+            // Clamp duration to reasonable limits (10ms to 65.5s for uint16_t in ms)
+            adjustedDuration = std::max(0.01f, std::min(adjustedDuration, 65.5f));
+            
             uint16_t durationMs = static_cast<uint16_t>(adjustedDuration * 1000.0f);
+            if (durationMs < 10) durationMs = 10;  // Minimum 10ms
             
             sequenceData.push_back({wp.stepPositions, durationMs});
+            
+            // Update previous steps for next iteration
+            previousSteps = wp.stepPositions;
         }
         
         // Send entire sequence in one packet
@@ -68,8 +112,8 @@ bool SequenceController::play() {
             bool success = hardwareInterface_->sendWaypointSequence(sequenceData);
             if (success) {
                 std::cout << "[Sequence] Sent " << sequenceData.size() 
-                          << " waypoints in sequence packet to Teensy" << std::endl;
-                // Teensy will handle execution, we monitor progress via status updates
+                          << " waypoints in sequence packet to NUCLEO-H7S3L8" << std::endl;
+                // NUCLEO-H7S3L8 will handle execution, we monitor progress via status updates
                 // But we still execute trajectory for visualization
             }
         }
@@ -266,16 +310,16 @@ void SequenceController::startNextWaypoint() {
     
     // Send trajectory based on mode
     if (config_.streamingMode == StreamingMode::TrajectoryBatch) {
-        // Batch mode: send waypoint step positions directly to Teensy
-        // Teensy will interpolate between waypoints
+        // Batch mode: send waypoint step positions directly to NUCLEO-H7S3L8
+        // NUCLEO-H7S3L8 will interpolate between waypoints
         sendMoveCommand(wp.stepPositions);
     }
     // Real-time mode: points will be sent in update() loop
 }
 
 void SequenceController::sendWaypointSequence(const std::vector<size_t>& waypointIndices) {
-    // Send entire sequence of waypoint step positions to Teensy
-    // This allows Teensy to handle interpolation between waypoints
+    // Send entire sequence of waypoint step positions to NUCLEO-H7S3L8
+    // This allows NUCLEO-H7S3L8 to handle interpolation between waypoints
     if (!hardwareInterface_ || !hardwareInterface_->isConnected()) {
         return;
     }

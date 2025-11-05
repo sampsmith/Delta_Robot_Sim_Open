@@ -38,7 +38,7 @@ You now have a **complete software suite** for your custom Delta Robot with:
 - **Efficient**: ~10x smaller than text
 - **Direct**: No parsing, just read step values
 - **Robust**: Checksums for error detection
-- **Simple**: Easy to implement on Teensy
+- **Simple**: Easy to implement on NUCLEO-H7S3L8
 
 ## How It Works
 
@@ -62,7 +62,7 @@ You now have a **complete software suite** for your custom Delta Robot with:
    - Encodes step positions into binary packets
    - Sends CMD_MOVE_ABS packets over Ethernet
    ↓
-7. Teensy Firmware:
+7. NUCLEO-H7S3L8 Firmware:
    - Receives binary packets
    - Parses step positions
    - Moves all 3 motors simultaneously
@@ -122,7 +122,7 @@ You now have a **complete software suite** for your custom Delta Robot with:
 - Enable/disable motors
 
 ### 4. Hardware Interface Panel
-- Connect to Teensy (IP address)
+- Connect to NUCLEO-H7S3L8 (IP address)
 - Connection status
 - Home motors
 - View hardware positions
@@ -149,7 +149,7 @@ You now have a **complete software suite** for your custom Delta Robot with:
 
 4. **Connect Hardware**:
    - Open "Hardware Interface" panel
-   - Enter Teensy IP address (e.g., 192.168.1.100)
+   - Enter NUCLEO-H7S3L8 IP address (e.g., 192.168.1.100)
    - Click "Connect"
    - Click "Enable Motors"
 
@@ -194,8 +194,8 @@ You now have a **complete software suite** for your custom Delta Robot with:
 
 ## Next Steps
 
-1. **Implement Teensy Firmware**:
-   - Use `TEENSY_FIRMWARE_OUTLINE.md` as guide
+1. **Implement NUCLEO-H7S3L8 Firmware**:
+   - Use `NUCLEO_FIRMWARE_OUTLINE.md` as guide
    - Implement packet parser
    - Add motor control
    - Test with hardware

@@ -61,54 +61,16 @@ protected:
     std::function<void(const std::string&)> onError_;
 };
 
-// Serial/USB hardware interface implementation
-// This will communicate with Arduino/ESP32 firmware
-class SerialHardwareInterface : public HardwareInterface {
-public:
-    SerialHardwareInterface();
-    ~SerialHardwareInterface();
-    
-    bool connect(const std::string& port) override;
-    void disconnect() override;
-    ConnectionState getConnectionState() const override { return connectionState_; }
-    bool isConnected() const override { return connectionState_ == ConnectionState::Connected; }
-    
-    bool moveMotorsToSteps(const std::array<int32_t, 3>& targetSteps) override;
-    bool moveMotorsRelative(const std::array<int32_t, 3>& stepDeltas) override;
-    bool sendWaypointSequence(const std::vector<std::pair<std::array<int32_t, 3>, uint16_t>>& waypoints) override;
-    bool setMotorSpeed(int motorIndex, float speed) override;
-    bool setMotorAcceleration(int motorIndex, float acceleration) override;
-    bool enableMotors(bool enable) override;
-    bool stopMotors() override;
-    
-    bool homeMotors() override;
-    bool setMotorPosition(int motorIndex, int32_t steps) override;
-    
-    bool getMotorPositions(std::array<int32_t, 3>& positions) override;
-    bool getMotorStates(std::array<bool, 3>& isMoving) override;
-    
-    bool setMicrostepping(int motorIndex, int microsteps) override;
-    bool setMotorConfig(const MotorConfig& config, int motorIndex) override;
-    
-    // Available serial ports
-    std::vector<std::string> getAvailablePorts() const;
-    
-private:
-    ConnectionState connectionState_;
-    void* serialPort_;  // Opaque pointer to serial port implementation
-    
-    bool sendCommand(const std::string& command);
-    std::string readResponse();
-    bool parseResponse(const std::string& response, bool& success);
-};
+// Serial/USB hardware interface removed - was using G-code
+// If needed in the future, implement using binary protocol instead
 
-// Ethernet hardware interface for Teensy over TCP/IP
+// Ethernet hardware interface for NUCLEO-H7S3L8 over TCP/IP
 class EthernetHardwareInterface : public HardwareInterface {
 public:
     EthernetHardwareInterface();
     ~EthernetHardwareInterface();
     
-    // Connect to Teensy via IP address and port
+    // Connect to NUCLEO-H7S3L8 via IP address and port
     bool connect(const std::string& address) override;  // Format: "IP:PORT" or just "IP" (default port 8080)
     void disconnect() override;
     ConnectionState getConnectionState() const override { return connectionState_; }
@@ -142,10 +104,7 @@ private:
     int serverPort_;
     int timeoutMs_;
     
-    bool sendCommand(const std::string& command);  // Legacy text command
-    std::string readResponse();  // Legacy text response
     std::vector<uint8_t> readBinaryResponse();  // Binary packet response
-    bool parseResponse(const std::string& response, bool& success);
     bool parseIPAddress(const std::string& address, std::string& ip, int& port);
 };
 

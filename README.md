@@ -134,13 +134,25 @@ delta_robot_sim/
 - The workspace is approximately spherical, limited by arm lengths
 - Z-axis is up (negative Z is down)
 
+## Hardware Controller
+
+The system is designed to communicate with a **NUCLEO-H7S3L8** microcontroller over Ethernet. The NUCLEO-H7S3L8 runs custom firmware that receives binary protocol commands and controls the robot's 3 NEMA 23 stepper motors.
+
+### Communication Protocol
+- **Protocol**: Custom binary protocol (no G-code)
+- **Connection**: Ethernet (TCP/IP)
+- **Port**: 8080 (default)
+- **Format**: Binary packets with checksum validation
+
+See `PROTOCOL_DESIGN.md` for detailed protocol specifications.
+
 ## Roadmap
 
 This simulation platform serves as the foundation for the open source delta robot project. Planned enhancements include:
 
+- Complete NUCLEO-H7S3L8 firmware implementation
 - Hardware interface abstraction layer (stepper motors, encoders, endstops)
 - Real-time control loops and trajectory planning
-- Serial communication protocols for hardware communication
 - Safety features and limits checking
 - Configuration file support for different robot configurations
 
