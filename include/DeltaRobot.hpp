@@ -1,86 +1,72 @@
-#ifndef DELTA_ROBOT_HPP
-#define DELTA_ROBOT_HPP
+#pragma once
 
+#include <glm/glm.hpp>
+#include <vector>
 #include <array>
-#include <cmath>
-#include <optional>
 
-struct Vec3 {
-    float x, y, z;
-    
-    Vec3(float x = 0.0f, float y = 0.0f, float z = 0.0f) : x(x), y(y), z(z) {}
-    
-    float length() const {
-        return std::sqrt(x*x + y*y + z*z);
-    }
-    
-    Vec3 operator-(const Vec3& other) const {
-        return Vec3(x - other.x, y - other.y, z - other.z);
-    }
-    
-    Vec3 operator+(const Vec3& other) const {
-        return Vec3(x + other.x, y + other.y, z + other.z);
-    }
-    
-    Vec3 operator*(float scalar) const {
-        return Vec3(x * scalar, y * scalar, z * scalar);
-    }
+struct DeltaRobotConfig {
+    float baseRadius = 0.15f;      // Base platform radius
+    float effectorRadius = 0.05f;  // End effector platform radius
+    float upperArmLength = 0.20f;  // Upper arm (bicep) length
+    float lowerArmLength = 0.30f;  // Lower arm (forearm) length
+    float baseHeight = 0.0f;       // Height of base platform
+    float jointAngle = 0.0f;       // Angle of joints on base (for future use)
+    float minMotorAngle = -60.0f * 3.14159265358979323846f / 180.0f;  // Minimum motor angle (degrees to radians)
+    float maxMotorAngle = 60.0f * 3.14159265358979323846f / 180.0f;    // Maximum motor angle (degrees to radians)
 };
 
-struct DeltaRobotParams {
-    float base_radius;      // Radius of base triangle (distance from center to joint)
-    float platform_radius;  // Radius of end-effector platform
-    float upper_arm_length; // Length of upper arm (connected to motors)
-    float lower_arm_length; // Length of parallelogram arms (forearm)
-    
-    DeltaRobotParams(float br = 200.0f, float pr = 50.0f, 
-                     float upper = 300.0f, float lower = 600.0f)
-        : base_radius(br), platform_radius(pr), 
-          upper_arm_length(upper), lower_arm_length(lower) {}
+struct ArmJoint {
+    glm::vec3 position;
+    float angle;  // Joint angle in radians (motor angle for upper joints, elbow angle for lower joints)
+    glm::vec3 direction;  // Direction vector of the joint axis/arm
+};
+
+struct DeltaRobotState {
+    glm::vec3 endEffectorPos;  // Target end effector position
+    std::array<ArmJoint, 3> upperJoints;  // Base joints (motor joints)
+    std::array<ArmJoint, 3> lowerJoints;  // Elbow joints
+    std::array<glm::vec3, 3> effectorJoints;  // End effector joints
+    std::array<float, 3> motorAngles;  // Motor angles in radians (0 = horizontal, positive = downward)
+    bool isValid = false;  // Whether the position is reachable
 };
 
 class DeltaRobot {
 public:
-    DeltaRobot(const DeltaRobotParams& params = DeltaRobotParams());
+    DeltaRobot();
+    DeltaRobot(const DeltaRobotConfig& config);
     
-    // Inverse kinematics: calculate joint angles for desired end-effector position
-    // Returns std::nullopt if position is unreachable
-    std::optional<std::array<float, 3>> inverseKinematics(const Vec3& position);
+    // Set end effector position and calculate inverse kinematics
+    bool setEndEffectorPosition(const glm::vec3& position);
     
-    // Forward kinematics: calculate end-effector position from joint angles
-    std::optional<Vec3> forwardKinematics(const std::array<float, 3>& angles);
+    // Get current state
+    const DeltaRobotState& getState() const { return state_; }
     
-    // Get current end-effector position
-    Vec3 getEndEffectorPosition() const { return end_effector_pos_; }
+    // Get configuration
+    const DeltaRobotConfig& getConfig() const { return config_; }
+    void setConfig(const DeltaRobotConfig& config);
     
-    // Get current joint angles (in radians)
-    std::array<float, 3> getJointAngles() const { return joint_angles_; }
+    // Get workspace bounds (approximate)
+    float getMaxReach() const;
+    float getMinHeight() const;
+    float getMaxHeight() const;
     
-    // Set target position (updates joint angles via IK)
-    bool setTargetPosition(const Vec3& target);
+    // Check if position is reachable
+    bool isPositionReachable(const glm::vec3& position) const;
     
-    // Get robot parameters
-    const DeltaRobotParams& getParams() const { return params_; }
-    
-    // Get base joint positions (3 points on base triangle)
-    std::array<Vec3, 3> getBaseJointPositions() const;
-    
-    // Get elbow positions for current joint angles
-    std::array<Vec3, 3> getElbowPositions() const;
-    
-    // Get platform joint positions (3 points on platform triangle)
-    std::array<Vec3, 3> getPlatformJointPositions() const;
+    // Get motor angles (in radians)
+    const std::array<float, 3>& getMotorAngles() const { return state_.motorAngles; }
 
 private:
-    DeltaRobotParams params_;
-    std::array<float, 3> joint_angles_;  // Current joint angles (radians)
-    Vec3 end_effector_pos_;
+    DeltaRobotConfig config_;
+    DeltaRobotState state_;
     
-    // Helper: solve IK for single arm (returns angle in radians)
-    std::optional<float> solveArmIK(const Vec3& base_joint, const Vec3& platform_joint);
+    // Calculate inverse kinematics for one arm
+    bool calculateArmIK(int armIndex, const glm::vec3& targetPos, ArmJoint& upperJoint, ArmJoint& lowerJoint, glm::vec3& effectorJoint);
     
-    // Helper: calculate elbow position for given base joint and angle
-    Vec3 calculateElbowPosition(const Vec3& base_joint, float angle) const;
+    // Base joint positions (three arms at 120 degree intervals)
+    glm::vec3 getBaseJointPosition(int armIndex) const;
+    
+    // End effector joint positions relative to centre
+    glm::vec3 getEffectorJointOffset(int armIndex) const;
 };
 
-#endif // DELTA_ROBOT_HPP
