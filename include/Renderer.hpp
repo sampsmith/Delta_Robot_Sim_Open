@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <vector>
 #include "DeltaRobot.hpp"
 
 struct GLFWwindow;
@@ -20,6 +21,8 @@ public:
     void renderDeltaRobot(const DeltaRobot& robot);
     void renderGrid(float size = 2.0f, float spacing = 0.1f);
     void renderCoordinateAxes(float length = 0.2f);
+    void renderTrajectoryPath(const std::vector<glm::vec3>& waypoints, const glm::vec3& currentPos, bool isPlaying);
+    void renderWorkspaceBoundary(const DeltaRobot& robot);
     
     // Camera controls
     void setCameraPosition(const glm::vec3& position);
@@ -66,8 +69,15 @@ private:
     void setup3DProjection();
     void setup2DProjection();
     void updateCameraPosition();
-    void renderCylinder(const glm::vec3& start, const glm::vec3& end, float radius, const glm::vec3& color);
-    void renderSphere(const glm::vec3& position, float radius, const glm::vec3& color);
+    void setupLighting();
+    void renderCylinder(const glm::vec3& start, const glm::vec3& end, float radius, const glm::vec3& color, bool useLighting = true);
+    void renderSphere(const glm::vec3& position, float radius, const glm::vec3& color, bool useLighting = true);
     void renderLine(const glm::vec3& start, const glm::vec3& end, const glm::vec3& color, float width = 1.0f);
+    void renderGradientBackground();
+    void renderCircularPlate(const glm::vec3& center, float radius, float thickness, const glm::vec3& color, bool useLighting = true);
+    void renderTriangularPlate(const glm::vec3& center, const std::array<glm::vec3, 3>& corners, float thickness, const glm::vec3& color, bool useLighting = true);
+    void renderMotorMount(const glm::vec3& position, const glm::vec3& direction, float size, const glm::vec3& color);
+    void renderPivotJoint(const glm::vec3& position, float radius, const glm::vec3& color);
+    void renderParallelLinkArm(const glm::vec3& start, const glm::vec3& end, float radius, float separation, const glm::vec3& color, bool useLighting = true);
 };
 

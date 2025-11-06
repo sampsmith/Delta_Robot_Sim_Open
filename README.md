@@ -151,7 +151,7 @@ See `PROTOCOL_DESIGN.md` for detailed protocol specifications.
 This simulation platform serves as the foundation for the open source delta robot project. Planned enhancements include:
 
 - Complete NUCLEO-H7S3L8 firmware implementation
-- Hardware interface abstraction layer (stepper motors, encoders, endstops)
+- Hardware interface abstraction layer (stepper motors, endstops)
 - Real-time control loops and trajectory planning
 - Safety features and limits checking
 - Configuration file support for different robot configurations

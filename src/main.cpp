@@ -43,6 +43,9 @@ UIManager* uiManager = nullptr;  // Will be initialized after sequenceController
 // Display state
 bool showGrid = true;
 bool showAxes = true;
+bool showWorkspace = false;
+bool showLabels = false;
+bool wireframeMode = false;
 
 // Mouse state
 double lastMouseX = 0.0;
@@ -182,10 +185,14 @@ int main() {
     sequenceController = new SequenceController(motorControl, hardwareInterface.get());
     
     // Initialize UI Manager
-    uiManager = new UIManager(robot, motorControl, hardwareInterface.get(), sequenceController, showGrid, showAxes);
+    uiManager = new UIManager(robot, motorControl, hardwareInterface.get(), sequenceController, 
+                              showGrid, showAxes, showWorkspace, showLabels, wireframeMode);
     if (uiScale > 1.0f) {
         uiManager->setUIScale(uiScale);
     }
+    
+    // Set renderer reference for display panel camera presets
+    uiManager->setRendererForDisplayPanel(&renderer);
     
     // Sync initial motor angles
     motorControl.setTargetAngles(robot.getMotorAngles());
@@ -208,6 +215,30 @@ int main() {
         
         if (showAxes) {
             renderer.renderCoordinateAxes(0.15f);
+        }
+        
+        // Render workspace boundary if enabled
+        if (showWorkspace) {
+            renderer.renderWorkspaceBoundary(robot);
+        }
+        
+        // Render trajectory path if sequence is playing
+        if (sequenceController && sequenceController->getState() == PlaybackState::Playing) {
+            const auto& waypoints = motorControl.getWaypoints();
+            const auto& sequence = sequenceController->getSequence();
+            if (!sequence.empty()) {
+                std::vector<glm::vec3> waypointPositions;
+                for (size_t idx : sequence) {
+                    if (idx < waypoints.size()) {
+                        waypointPositions.push_back(waypoints[idx].endEffectorPos);
+                    }
+                }
+                if (!waypointPositions.empty()) {
+                    renderer.renderTrajectoryPath(waypointPositions, 
+                                                 robot.getState().endEffectorPos, 
+                                                 true);
+                }
+            }
         }
         
         renderer.renderDeltaRobot(robot);
@@ -317,15 +348,11 @@ int main() {
             (!sequenceController || sequenceController->getState() == PlaybackState::Stopped)) {
             auto requiredSteps = motorControl.getRequiredSteps();
             if (std::abs(requiredSteps[0]) > 0 || std::abs(requiredSteps[1]) > 0 || std::abs(requiredSteps[2]) > 0) {
+                // Send movement command - no feedback required
+                // STM32 will execute movement asynchronously
                 hardwareInterface->moveMotorsRelative(requiredSteps);
-                // Update motor states from hardware feedback
-                std::array<int32_t, 3> positions;
-                if (hardwareInterface->getMotorPositions(positions)) {
-                    for (int i = 0; i < 3; ++i) {
-                        float angle = motorControl.stepsToAngle(i, positions[i]);
-                        // Note: This would need a method to set current angle directly
-                    }
-                }
+                // Note: Position feedback is optional (RESP_STATUS) and not required for movement
+                // Motor states are tracked locally based on commanded positions
             }
         }
         

@@ -11,6 +11,7 @@ class DeltaRobot;
 class MotorControl;
 class HardwareInterface;
 class SequenceController;
+class Renderer;
 struct Waypoint;
 struct MotorConfig;
 struct DeltaRobotConfig;
@@ -121,13 +122,20 @@ private:
 // Display Panel - Display options
 class DisplayPanel : public UIPanel {
 public:
-    DisplayPanel(bool& showGrid, bool& showAxes);
+    DisplayPanel(bool& showGrid, bool& showAxes, bool& showWorkspace, bool& showLabels, bool& wireframeMode);
     void render() override;
     const char* getName() const override { return "Display"; }
+    
+    // Camera preset controls (passed to renderer)
+    void setRenderer(Renderer* renderer) { renderer_ = renderer; }
     
 private:
     bool& showGrid_;
     bool& showAxes_;
+    bool& showWorkspace_;
+    bool& showLabels_;
+    bool& wireframeMode_;
+    Renderer* renderer_ = nullptr;
 };
 
 // UI Manager - Coordinates all panels
@@ -135,7 +143,7 @@ class UIManager {
 public:
     UIManager(DeltaRobot& robot, MotorControl& motorControl, 
               HardwareInterface* hardwareInterface, SequenceController* sequenceController,
-              bool& showGrid, bool& showAxes);
+              bool& showGrid, bool& showAxes, bool& showWorkspace, bool& showLabels, bool& wireframeMode);
     
     void render(float deltaTime);
     
@@ -154,6 +162,9 @@ public:
     
     // UI scale
     void setUIScale(float scale) { controlPanel_.uiScale = scale; }
+    
+    // Set renderer for display panel camera presets
+    void setRendererForDisplayPanel(Renderer* renderer) { displayPanel_.setRenderer(renderer); }
     
 private:
     ControlPanel controlPanel_;

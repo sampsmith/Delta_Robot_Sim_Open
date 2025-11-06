@@ -47,7 +47,8 @@ int32_t MotorControl::angleToSteps(int motorIndex, float angleRadians) const {
     // Steps = (angle / 2π) * stepsPerRevolution * microstepping * gearRatio
     float revolutions = adjustedAngle / (2.0f * M_PI);
     float totalStepsPerRev = config.stepsPerRevolution * config.microstepping * config.gearRatio;
-    int32_t steps = static_cast<int32_t>(revolutions * totalStepsPerRev);
+    // Use rounding for better accuracy (closest step position)
+    int32_t steps = static_cast<int32_t>(std::round(revolutions * totalStepsPerRev));
     
     if (config.inverted) {
         steps = -steps;
@@ -238,8 +239,10 @@ void MotorControl::update(float deltaTime) {
     // Update motor states (simulate movement toward target)
     for (int i = 0; i < 3; ++i) {
         float error = targetAngles_[i] - motorStates_[i].currentAngle;
-        // Use calculated max steps per second, convert to angular velocity
-        float maxAngularVelocity = motorConfigs_[i].maxStepsPerSecond / calculateTotalSteps(i);
+        // Use calculated max steps per second, convert to angular velocity (rad/s)
+        // angularVelocity = (steps/sec) / (steps/rev) * (2π rad/rev)
+        float totalStepsPerRev = calculateTotalSteps(i);
+        float maxAngularVelocity = (motorConfigs_[i].maxStepsPerSecond / totalStepsPerRev) * (2.0f * M_PI);
         float angularVelocity = std::min(std::abs(error) / deltaTime, maxAngularVelocity);
         
         if (std::abs(error) > 0.0001f) {

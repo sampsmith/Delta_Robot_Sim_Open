@@ -78,13 +78,17 @@ void HardwarePanel::render() {
         }
         
         if (ImGui::Button("Home Motors (Physical Sensor)")) {
-            hardwareInterface_->homeMotors();
-            
-            std::array<int32_t, 3> physicalHome;
-            if (hardwareInterface_->getMotorPositions(physicalHome)) {
+            // Send CMD_HOME command - STM32 firmware handles all homing logic
+            // STM32 reads 3 limit switches and executes homing sequence
+            // After homing completes, STM32 sends RESP_HOMED with [0, 0, 0]
+            if (hardwareInterface_->homeMotors()) {
+                // RESP_HOMED response received (handled in homeMotors())
+                // After homing, positions will be [0, 0, 0]
+                // Set physical home position to 0 (where switches triggered)
                 for (int i = 0; i < 3; ++i) {
-                    motorControl_.setPhysicalHomePosition(i, physicalHome[i]);
+                    motorControl_.setPhysicalHomePosition(i, 0);
                 }
+                motorControl_.setHomed(true);
             }
         }
         

@@ -65,7 +65,12 @@ This document outlines the binary protocol for direct communication between the 
 
 Move all 3 motors to absolute step positions simultaneously. Motors will move in a coordinated manner.
 
-**Response:** RESP_OK when movement started, RESP_ERROR on failure
+**Step Convention:**
+- Home position: [0, 0, 0] (after homing)
+- Forward movement: Positive steps (increasing from 0)
+- Backward movement: Negative steps (decreasing from 0)
+
+**Response:** RESP_OK when movement started (acknowledgment only, no position feedback required)
 
 ---
 
@@ -135,9 +140,23 @@ Immediately stop all motors and abort any current movement.
 
 **Payload:** None (0 bytes)
 
-Start homing sequence for all motors. Uses end-stops if available.
+**PC Role**: Only sends the CMD_HOME command - no homing logic on PC side.
 
-**Response:** RESP_OK when homing started, RESP_HOMED when complete
+**STM32 Role**: Handles ALL homing sequence logic:
+1. Read 3 limit switches connected to STM32 GPIO pins
+2. Move all 3 motors upward slowly (negative direction) until all switches trigger
+3. Stop motors when all 3 switches are triggered
+4. Set all motor positions to 0 (home position)
+5. Send RESP_HOMED with positions [0, 0, 0]
+
+**Response:** 
+- RESP_OK when homing started (acknowledgment)
+- RESP_HOMED when complete (with positions [0, 0, 0])
+
+**Note:** 
+- After homing, all movements use positive steps (forward from home position 0)
+- Limit switches must be connected to STM32 GPIO pins
+- STM32 firmware implements all homing sequence logic
 
 ---
 

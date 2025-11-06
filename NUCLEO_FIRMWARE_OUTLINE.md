@@ -217,10 +217,11 @@ typedef struct {
 
 ### 6. Homing System
 
-**Purpose**: Home motors to known reference positions
+**Purpose**: Home motors to known reference positions using 3 limit switches connected to STM32
 
 **Responsibilities**:
-- Move motors until end-stops trigger
+- Read 3 limit switches from STM32 GPIO pins
+- Move motors upward slowly until all switches trigger
 - Set position to zero after homing
 - Report homing completion
 - Handle homing errors
@@ -231,13 +232,22 @@ void homing_start(void);
 void homing_update(void);  // Call in main loop during homing
 bool homing_is_active(void);
 bool homing_is_complete(void);
+bool check_limit_switches(void);  // Read GPIO pins for switches
 ```
 
 **Implementation**:
-- Use GPIO interrupts for end-stop detection
-- Move motors slowly until end-stop triggers
-- Set motor position to zero after homing
-- Send RESP_HOMED packet when complete
+- **Limit Switches**: Connected to STM32 GPIO pins (configure in STM32CubeMX)
+- **GPIO Configuration**: Input mode with pull-up/pull-down as needed
+- **Interrupts**: Optional - can use GPIO interrupts or poll in main loop
+- **Homing Sequence**:
+  1. Receive CMD_HOME from PC
+  2. Set motors to slow speed (e.g., 100 steps/sec)
+  3. Move motors upward (negative direction) slowly
+  4. Poll limit switch GPIO pins in main loop
+  5. When all 3 switches trigger, stop motors
+  6. Set all motor positions to 0
+  7. Send RESP_HOMED with positions [0, 0, 0]
+- **PC Role**: Only sends CMD_HOME command - all logic on STM32
 
 ---
 

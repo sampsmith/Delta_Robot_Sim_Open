@@ -528,7 +528,14 @@ bool EthernetHardwareInterface::stopMotors() {
 bool EthernetHardwareInterface::homeMotors() {
     if (!isConnected()) return false;
     
-    // Use binary protocol instead of G-code
+    // Use binary protocol - CMD_HOME command
+    // PC only sends the command - ALL homing logic is handled by STM32 firmware
+    // STM32 firmware will:
+    // 1. Read 3 limit switches connected to STM32 GPIO pins
+    // 2. Move motors upward slowly (negative direction) until all 3 switches trigger
+    // 3. Stop motors when all switches hit
+    // 4. Set all motor positions to 0 (home position)
+    // 5. Send RESP_HOMED with positions [0, 0, 0]
     using namespace DeltaRobotProtocol;
     Packet packet = Commands::home();
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
@@ -541,11 +548,23 @@ bool EthernetHardwareInterface::homeMotors() {
         return false;
     }
     
-    // Read response - could be RESP_OK (homing started) or RESP_HOMED (homing complete)
+    // Read response - STM32 will send RESP_OK (homing started)
+    // Then later send RESP_HOMED (homing complete) with positions [0, 0, 0]
+    // For now, accept RESP_OK as success (homing started)
+    // RESP_HOMED will be sent when homing completes
     std::vector<uint8_t> response = readBinaryResponse();
     if (!response.empty()) {
         Packet respPacket;
         if (PacketEncoder::decode(response, respPacket)) {
+            // Accept RESP_OK (homing started) or RESP_HOMED (homing complete)
+            if (respPacket.type == PacketType::RESP_HOMED) {
+                // Parse homed positions (should be [0, 0, 0])
+                std::array<int32_t, 3> positions;
+                if (Responses::parseHomed(respPacket, positions)) {
+                    std::cout << "[Ethernet] Homing complete. Positions: [" 
+                              << positions[0] << ", " << positions[1] << ", " << positions[2] << "]" << std::endl;
+                }
+            }
             return respPacket.type == PacketType::RESP_OK || 
                    respPacket.type == PacketType::RESP_HOMED;
         }
@@ -611,8 +630,33 @@ bool EthernetHardwareInterface::getMotorPositions(std::array<int32_t, 3>& positi
 }
 
 bool EthernetHardwareInterface::getMotorStates(std::array<bool, 3>& isMoving) {
-    // TODO: Implement status query command
-    // For now, assume all motors are not moving if we can't query
+    if (!isConnected()) return false;
+    
+    // Use CMD_REQUEST_STATUS to get current motor states
+    using namespace DeltaRobotProtocol;
+    Packet packet = Commands::requestStatus();
+    std::vector<uint8_t> data = PacketEncoder::encode(packet);
+    
+    int& sockfd = *static_cast<int*>(socketHandle_);
+    ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+    if (sent < 0) {
+        return false;
+    }
+    
+    std::vector<uint8_t> response = readBinaryResponse();
+    if (!response.empty()) {
+        Packet respPacket;
+        if (PacketEncoder::decode(response, respPacket) && 
+            respPacket.type == PacketType::RESP_STATUS) {
+            Responses::StatusInfo status;
+            if (Responses::parseStatus(respPacket, status)) {
+                isMoving = status.moving;
+                return true;
+            }
+        }
+    }
+    
+    // If we can't get status, assume not moving (safe default)
     isMoving = {false, false, false};
     return false;
 }

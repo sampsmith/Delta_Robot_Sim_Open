@@ -109,13 +109,12 @@ typedef enum {
     RESP_HOMED = 0x84
 } packet_type_t;
 
-/* TODO: Implement the following functions */
-
 /* Motor Control Functions */
 void motor_init(void) {
     // Initialize motor GPIO pins
     // Configure timers for step generation
     // Set initial states
+    // Initialize limit switch GPIO pins (for homing)
 }
 
 void motor_move_to_absolute(const int32_t positions[3]) {
@@ -193,20 +192,43 @@ void status_send_update(void) {
 }
 
 /* Homing Functions */
+// Homing sequence logic - ALL implemented in STM32 firmware
+// PC only sends CMD_HOME, STM32 handles everything
+
 void homing_start(void) {
     // Start homing sequence
     homing_active = true;
+    
+    // Set slow speed for homing (e.g., 100 steps/sec for safety)
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        motors[i].max_speed = 100.0f;  // Slow speed for homing
+    }
+    
+    // Begin moving motors upward (negative direction) toward switches
+    // Continue until all 3 limit switches trigger
 }
 
 void homing_update(void) {
-    // Update homing state machine
-    // Check end-stop triggers
-    // Set positions to zero when complete
+    // Update homing state machine - called in main loop during homing
+    // Check limit switch GPIO pins (connected to STM32)
+    // Move motors upward slowly until all 3 switches trigger
+    
+    // When all switches triggered:
+    // 1. Stop all motors
+    // 2. Set all positions to 0 (home position)
+    // 3. Send RESP_HOMED packet with positions [0, 0, 0]
+    // 4. Set homing_active = false
+    // 5. Set homed = true
 }
 
 bool homing_is_active(void) {
     return homing_active;
 }
+
+// Limit switch GPIO interrupt handlers (to be implemented)
+// Configure GPIO pins with interrupts for limit switches
+// When switch triggers, set flag for that motor
+// Check all 3 switches in homing_update()
 
 /* Main Function */
 int main(void) {

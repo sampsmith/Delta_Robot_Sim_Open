@@ -668,8 +668,8 @@ Delta_Robot_Sim_Open/
 3. **Multi-Robot Support**: Control multiple robots simultaneously
 4. **Recording/Playback**: Record manual movements and replay
 5. **G-code Import**: Import from CAD/CAM and convert to waypoints
-6. **Closed-Loop Control**: Encoder feedback for position verification
-7. **Force Feedback**: Integration with force sensors
+6. **Force Feedback**: Integration with force sensors
+7. **Encoder Support**: (Future enhancement) Closed-loop control with encoders for position verification
 
 ---
 

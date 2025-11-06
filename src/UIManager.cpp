@@ -9,13 +9,13 @@
 
 UIManager::UIManager(DeltaRobot& robot, MotorControl& motorControl, 
                      HardwareInterface* hardwareInterface, SequenceController* sequenceController,
-                     bool& showGrid, bool& showAxes)
+                     bool& showGrid, bool& showAxes, bool& showWorkspace, bool& showLabels, bool& wireframeMode)
     : controlPanel_(robot, motorControl)
     , robotSetupPanel_(robot, motorControl)
     , waypointPanel_(robot, motorControl)
     , sequencePanel_(robot, motorControl, sequenceController)
     , hardwarePanel_(hardwareInterface, motorControl)
-    , displayPanel_(showGrid, showAxes) {
+    , displayPanel_(showGrid, showAxes, showWorkspace, showLabels, wireframeMode) {
 }
 
 void UIManager::render(float deltaTime) {

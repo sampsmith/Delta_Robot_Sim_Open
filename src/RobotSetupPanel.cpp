@@ -2,6 +2,7 @@
 #include "DeltaRobot.hpp"
 #include "MotorControl.hpp"
 #include <cmath>
+#include <algorithm>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -48,8 +49,16 @@ void RobotSetupPanel::renderDimensionsTab() {
     
     // Base Plate (Top Plate) Configuration
     ImGui::Text("Base Plate (Top Plate):");
+    float oldBasePlateRadius = config.basePlateRadius;
     if (ImGui::DragFloat("Base Plate Radius (m)", &config.basePlateRadius, 0.001f, 0.05f, 0.5f, "%.3f")) {
         config.baseRadius = config.basePlateRadius;
+        // Automatically update baseJointRadius to match basePlateRadius
+        // This ensures arms move with the plate size
+        if (std::abs(config.baseJointRadius - oldBasePlateRadius) < 0.001f || 
+            config.baseJointRadius > config.basePlateRadius) {
+            // Only auto-sync if baseJointRadius was at the old plate radius or outside plate
+            config.baseJointRadius = config.basePlateRadius * 0.8f; // Position joints at 80% of plate radius
+        }
         configChanged = true;
     }
     ImGui::SameLine();
@@ -81,8 +90,16 @@ void RobotSetupPanel::renderDimensionsTab() {
     
     // Effector Plate (Bottom Plate) Configuration
     ImGui::Text("Effector Plate (Bottom Plate):");
+    float oldEffectorPlateRadius = config.effectorPlateRadius;
     if (ImGui::DragFloat("Effector Plate Radius (m)", &config.effectorPlateRadius, 0.001f, 0.01f, 0.2f, "%.3f")) {
         config.effectorRadius = config.effectorPlateRadius;
+        // Automatically update effectorJointRadius to match effectorPlateRadius
+        // This ensures arms move with the effector plate size
+        if (std::abs(config.effectorJointRadius - oldEffectorPlateRadius) < 0.001f || 
+            config.effectorJointRadius > config.effectorPlateRadius) {
+            // Only auto-sync if effectorJointRadius was at the old plate radius or outside plate
+            config.effectorJointRadius = config.effectorPlateRadius * 0.8f; // Position joints at 80% of plate radius
+        }
         configChanged = true;
     }
     ImGui::SameLine();
@@ -104,22 +121,34 @@ void RobotSetupPanel::renderDimensionsTab() {
     
     // Joint Positions
     ImGui::Text("Joint Positions:");
-    if (ImGui::DragFloat("Base Joint Radius (m)", &config.baseJointRadius, 0.001f, 0.05f, 0.3f, "%.3f")) {
+    if (ImGui::DragFloat("Base Joint Radius (m)", &config.baseJointRadius, 0.001f, 0.05f, config.basePlateRadius, "%.3f")) {
         configChanged = true;
     }
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Distance from base center to motor joint center");
+        ImGui::SetTooltip("Distance from base center to motor joint center (auto-synced with base plate radius)");
     }
     
-    if (ImGui::DragFloat("Effector Joint Radius (m)", &config.effectorJointRadius, 0.001f, 0.01f, 0.15f, "%.3f")) {
+    // Show ratio to base plate
+    if (config.basePlateRadius > 0.001f) {
+        float ratio = config.baseJointRadius / config.basePlateRadius;
+        ImGui::Text("  Joint/Plate ratio: %.1f%%", ratio * 100.0f);
+    }
+    
+    if (ImGui::DragFloat("Effector Joint Radius (m)", &config.effectorJointRadius, 0.001f, 0.01f, config.effectorPlateRadius, "%.3f")) {
         configChanged = true;
     }
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Distance from effector center to arm joint center");
+        ImGui::SetTooltip("Distance from effector center to arm joint center (auto-synced with effector plate radius)");
+    }
+    
+    // Show ratio to effector plate
+    if (config.effectorPlateRadius > 0.001f) {
+        float ratio = config.effectorJointRadius / config.effectorPlateRadius;
+        ImGui::Text("  Joint/Plate ratio: %.1f%%", ratio * 100.0f);
     }
     
     ImGui::Separator();

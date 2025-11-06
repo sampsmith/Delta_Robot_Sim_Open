@@ -31,22 +31,24 @@ This guide explains how to set up the **NUCLEO-H7S3L8** development board with E
 ## Pin Connections
 
 ### Motor 1 (X-axis)
-- STEP → GPIO pin (e.g., PA0, PB0, or PC0 - configure in firmware)
+- STEP → GPIO pin (e.g., PA0, PB0, or PC0 - configure in STM32CubeMX)
 - DIR → GPIO pin (e.g., PA1, PB1, or PC1)
 - ENABLE → GPIO pin (e.g., PA2, PB2, or PC2)
-- End-stop (optional) → GPIO pin with interrupt capability
+- **Limit Switch (Upper Home)** → GPIO pin (configure as input in STM32CubeMX)
 
 ### Motor 2 (Y-axis)
 - STEP → GPIO pin
 - DIR → GPIO pin
 - ENABLE → GPIO pin
-- End-stop (optional) → GPIO pin with interrupt capability
+- **Limit Switch (Upper Home)** → GPIO pin (configure as input in STM32CubeMX)
 
 ### Motor 3 (Z-axis)
 - STEP → GPIO pin
 - DIR → GPIO pin
 - ENABLE → GPIO pin
-- End-stop (optional) → GPIO pin with interrupt capability
+- **Limit Switch (Upper Home)** → GPIO pin (configure as input in STM32CubeMX)
+
+**Note**: Limit switches are connected directly to STM32 GPIO pins. STM32 firmware reads these switches and implements all homing logic. PC software only sends CMD_HOME command.
 
 ### Ethernet
 - Built-in Ethernet PHY on NUCLEO-H7S3L8
