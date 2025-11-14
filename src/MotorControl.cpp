@@ -10,67 +10,22 @@ MotorControl::MotorControl()
     : currentTrajectoryIndex_(0)
     , trajectoryTime_(0.0f)
     , executingTrajectory_(false)
+    , softwareHomeActive_(false)
+    , isHomed_(false)
 {
     // Default configuration for all motors
     for (int i = 0; i < 3; ++i) {
         motorConfigs_[i] = MotorConfig();
         motorStates_[i] = MotorState();
         targetAngles_[i] = 0.0f;
-    }
-    
-    // Initialize home position
-    homePosition_.isHomed = false;
-    for (int i = 0; i < 3; ++i) {
-        homePosition_.physicalHomeSteps[i] = 0;
-        homePosition_.officialHomeSteps[i] = 0;
-        homePosition_.homeOffsetSteps[i] = 0;
+        softwareHomeAngles_[i] = 0.0f;
     }
 }
 
 void MotorControl::setMotorConfig(int motorIndex, const MotorConfig& config) {
     if (motorIndex >= 0 && motorIndex < 3) {
         motorConfigs_[motorIndex] = config;
-        // Recalculate dependent values
-        motorConfigs_[motorIndex].calculateDependentValues(0.20f);  // Default arm length, will be updated
     }
-}
-
-int32_t MotorControl::angleToSteps(int motorIndex, float angleRadians) const {
-    if (motorIndex < 0 || motorIndex >= 3) return 0;
-    
-    const MotorConfig& config = motorConfigs_[motorIndex];
-    
-    // Account for home offset
-    float adjustedAngle = angleRadians - config.homeOffset;
-    
-    // Convert radians to steps
-    // Steps = (angle / 2π) * stepsPerRevolution * microstepping * gearRatio
-    float revolutions = adjustedAngle / (2.0f * M_PI);
-    float totalStepsPerRev = config.stepsPerRevolution * config.microstepping * config.gearRatio;
-    // Use rounding for better accuracy (closest step position)
-    int32_t steps = static_cast<int32_t>(std::round(revolutions * totalStepsPerRev));
-    
-    if (config.inverted) {
-        steps = -steps;
-    }
-    
-    return steps;
-}
-
-float MotorControl::stepsToAngle(int motorIndex, int32_t steps) const {
-    if (motorIndex < 0 || motorIndex >= 3) return 0.0f;
-    
-    const MotorConfig& config = motorConfigs_[motorIndex];
-    
-    int32_t adjustedSteps = config.inverted ? -steps : steps;
-    
-    // Convert steps to radians
-    float totalStepsPerRev = config.stepsPerRevolution * config.microstepping * config.gearRatio;
-    float revolutions = static_cast<float>(adjustedSteps) / totalStepsPerRev;
-    float angle = revolutions * 2.0f * M_PI;
-    
-    // Account for home offset
-    return angle + config.homeOffset;
 }
 
 void MotorControl::setTargetAngles(const std::array<float, 3>& angles) {
@@ -239,21 +194,19 @@ void MotorControl::update(float deltaTime) {
     // Update motor states (simulate movement toward target)
     for (int i = 0; i < 3; ++i) {
         float error = targetAngles_[i] - motorStates_[i].currentAngle;
-        // Use calculated max steps per second, convert to angular velocity (rad/s)
-        // angularVelocity = (steps/sec) / (steps/rev) * (2π rad/rev)
-        float totalStepsPerRev = calculateTotalSteps(i);
-        float maxAngularVelocity = (motorConfigs_[i].maxStepsPerSecond / totalStepsPerRev) * (2.0f * M_PI);
-        float angularVelocity = std::min(std::abs(error) / deltaTime, maxAngularVelocity);
+        float maxAngularVelocity = motorConfigs_[i].maxAngularVelocity;
+        if (maxAngularVelocity <= 0.0f) {
+            maxAngularVelocity = 1.0f;
+        }
+        float maxDelta = maxAngularVelocity * deltaTime;
         
         if (std::abs(error) > 0.0001f) {
             motorStates_[i].isMoving = true;
-            float step = (error > 0) ? angularVelocity * deltaTime : -angularVelocity * deltaTime;
+            float step = std::clamp(error, -maxDelta, maxDelta);
             motorStates_[i].currentAngle += step;
-            motorStates_[i].currentSteps = angleToSteps(i, motorStates_[i].currentAngle);
         } else {
             motorStates_[i].isMoving = false;
             motorStates_[i].currentAngle = targetAngles_[i];
-            motorStates_[i].currentSteps = angleToSteps(i, motorStates_[i].currentAngle);
         }
     }
 }
@@ -261,9 +214,6 @@ void MotorControl::update(float deltaTime) {
 void MotorControl::setHomed(int motorIndex, bool homed) {
     if (motorIndex >= 0 && motorIndex < 3) {
         motorStates_[motorIndex].isHomed = homed;
-        if (homed) {
-            motorStates_[motorIndex].currentSteps = 0;
-        }
     }
 }
 
@@ -273,43 +223,27 @@ void MotorControl::setHomeOffset(int motorIndex, float offsetRadians) {
     }
 }
 
-void Waypoint::calculateSteps(const MotorControl& motorControl) {
-    for (int i = 0; i < 3; ++i) {
-        stepPositions[i] = motorControl.angleToSteps(i, motorAngles[i]);
-    }
-}
-
 void MotorControl::addWaypoint(const Waypoint& waypoint) {
-    Waypoint wp = waypoint;
-    // Ensure step positions are calculated
-    if (wp.stepPositions[0] == 0 && wp.stepPositions[1] == 0 && wp.stepPositions[2] == 0) {
-        wp.calculateSteps(*this);
-    }
-    waypoints_.push_back(wp);
+    waypoints_.push_back(waypoint);
 }
 
-void MotorControl::setPhysicalHomePosition(int motorIndex, int32_t physicalHomeSteps) {
-    if (motorIndex >= 0 && motorIndex < 3) {
-        homePosition_.physicalHomeSteps[motorIndex] = physicalHomeSteps;
-        // Recalculate official home
-        homePosition_.officialHomeSteps[motorIndex] = physicalHomeSteps + homePosition_.homeOffsetSteps[motorIndex];
+void MotorControl::resetToSoftwareHome() {
+    for (int i = 0; i < 3; ++i) {
+        softwareHomeAngles_[i] = motorStates_[i].currentAngle;
+        motorStates_[i].isHomed = true;
+        targetAngles_[i] = motorStates_[i].currentAngle;
     }
+    isHomed_ = true;
+    softwareHomeActive_ = true;
 }
 
-void MotorControl::setHomeOffsetSteps(int motorIndex, int32_t offsetSteps) {
-    if (motorIndex >= 0 && motorIndex < 3) {
-        homePosition_.homeOffsetSteps[motorIndex] = offsetSteps;
-        // Recalculate official home
-        homePosition_.officialHomeSteps[motorIndex] = homePosition_.physicalHomeSteps[motorIndex] + offsetSteps;
+std::array<float, 3> MotorControl::getAnglesRelativeToHome() const {
+    std::array<float, 3> relativeAngles;
+    for (int i = 0; i < 3; ++i) {
+        float offset = softwareHomeActive_ ? softwareHomeAngles_[i] : 0.0f;
+        relativeAngles[i] = motorStates_[i].currentAngle - offset;
     }
-}
-
-void MotorControl::setOfficialHomePosition(int motorIndex, int32_t officialHomeSteps) {
-    if (motorIndex >= 0 && motorIndex < 3) {
-        homePosition_.officialHomeSteps[motorIndex] = officialHomeSteps;
-        // Calculate offset from physical home
-        homePosition_.homeOffsetSteps[motorIndex] = officialHomeSteps - homePosition_.physicalHomeSteps[motorIndex];
-    }
+    return relativeAngles;
 }
 
 void MotorControl::removeWaypoint(size_t index) {
@@ -359,15 +293,6 @@ bool MotorControl::executeWaypointSequence(const std::vector<size_t>& waypointIn
     return false;
 }
 
-std::array<int32_t, 3> MotorControl::getRequiredSteps() const {
-    std::array<int32_t, 3> steps;
-    for (int i = 0; i < 3; ++i) {
-        int32_t targetSteps = angleToSteps(i, targetAngles_[i]);
-        steps[i] = targetSteps - motorStates_[i].currentSteps;
-    }
-    return steps;
-}
-
 bool MotorControl::isAtTarget(float tolerance) const {
     for (int i = 0; i < 3; ++i) {
         float error = std::abs(targetAngles_[i] - motorStates_[i].currentAngle);
@@ -376,59 +301,5 @@ bool MotorControl::isAtTarget(float tolerance) const {
         }
     }
     return true;
-}
-
-float MotorControl::calculateTotalSteps(int motorIndex) const {
-    if (motorIndex < 0 || motorIndex >= 3) return 1.0f;
-    const MotorConfig& config = motorConfigs_[motorIndex];
-    return static_cast<float>(config.stepsPerRevolution * config.microstepping * config.gearRatio);
-}
-
-float MotorControl::clampAngle(int motorIndex, float angle) const {
-    // Angles are already constrained by DeltaRobot kinematics
-    return angle;
-}
-
-void MotorControl::updateVelocityLimits(const DeltaRobotConfig& robotConfig) {
-    // Update velocity limits for all motors based on robot geometry
-    for (int i = 0; i < 3; ++i) {
-        motorConfigs_[i].calculateDependentValues(robotConfig.upperArmLength);
-    }
-}
-
-std::array<float, 3> MotorControl::calculateMotorSpeedsForVelocity(
-    const glm::vec3& endEffectorVelocity,
-    const DeltaRobotConfig& robotConfig,
-    const std::array<float, 3>& currentMotorAngles
-) const {
-    std::array<float, 3> motorSpeeds = {0.0f, 0.0f, 0.0f};
-    
-    // For delta robot, we need to calculate the Jacobian to convert end-effector velocity
-    // to joint velocities. For now, use a simplified approach based on arm length.
-    
-    // The relationship between end-effector velocity and motor angular velocity
-    // depends on the current configuration. For a simplified model:
-    // v_end = ω_arm * L_upper (approximate at maximum extension)
-    
-    float speedMagnitude = glm::length(endEffectorVelocity);
-    if (speedMagnitude > 0.0f) {
-        // Calculate required arm angular velocity
-        float armAngularVel = speedMagnitude / robotConfig.upperArmLength;  // rad/s
-        
-        // Convert to motor RPM (accounting for gearbox)
-        float armRPM = (armAngularVel / (2.0f * M_PI)) * 60.0f;  // RPM at arm
-        float motorRPM = armRPM * motorConfigs_[0].gearRatio;  // RPM at motor
-        
-        // Convert to steps per second
-        float totalStepsPerRev = motorConfigs_[0].stepsPerRevolution * motorConfigs_[0].microstepping;
-        float stepsPerSecond = (motorRPM / 60.0f) * totalStepsPerRev;
-        
-        // Apply to all motors (simplified - in reality each motor speed would differ)
-        for (int i = 0; i < 3; ++i) {
-            motorSpeeds[i] = stepsPerSecond;
-        }
-    }
-    
-    return motorSpeeds;
 }
 

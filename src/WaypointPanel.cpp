@@ -22,19 +22,7 @@ void WaypointPanel::render() {
         wp.endEffectorPos = robot_.getState().endEffectorPos;
         wp.motorAngles = robot_.getMotorAngles();
         wp.duration = 2.0f;
-        wp.calculateSteps(motorControl_);
         motorControl_.addWaypoint(wp);
-    }
-    
-    ImGui::SameLine();
-    if (ImGui::Button("Set as Home")) {
-        const auto& motorStates = motorControl_.getMotorStates();
-        for (int i = 0; i < 3; ++i) {
-            int32_t currentSteps = motorStates[i].currentSteps;
-            motorControl_.setOfficialHomePosition(i, currentSteps);
-            motorControl_.setHomed(i, true);
-        }
-        motorControl_.setHomed(true);
     }
     
     ImGui::Separator();
@@ -62,15 +50,7 @@ void WaypointPanel::render() {
                 waypoints[i].motorAngles[0] * 180.0f / M_PI,
                 waypoints[i].motorAngles[1] * 180.0f / M_PI,
                 waypoints[i].motorAngles[2] * 180.0f / M_PI);
-            ImGui::Text("Step Positions: (%d, %d, %d)", 
-                waypoints[i].stepPositions[0],
-                waypoints[i].stepPositions[1],
-                waypoints[i].stepPositions[2]);
             ImGui::DragFloat("Duration", &waypoints[i].duration, 0.1f, 0.1f, 10.0f);
-            
-            if (ImGui::Button("Recalculate Steps")) {
-                waypoints[i].calculateSteps(motorControl_);
-            }
             ImGui::TreePop();
         }
         ImGui::PopID();

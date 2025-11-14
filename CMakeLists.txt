@@ -98,8 +98,6 @@ set(SOURCES
     src/DeltaRobot.cpp
     src/Renderer.cpp
     src/MotorControl.cpp
-    src/HardwareInterface.cpp
-    src/DeltaRobotProtocol.cpp
     src/SequenceController.cpp
     src/ControlPanel.cpp
     src/RobotSetupPanel.cpp

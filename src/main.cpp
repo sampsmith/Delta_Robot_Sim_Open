@@ -156,33 +156,22 @@ int main() {
     glm::vec3 endEffectorPos(0.0f, 0.0f, -0.35f);
     robot.setEndEffectorPosition(endEffectorPos);
     
-    // Initialize motor control with default NEMA 23 configuration
-    // Standard NEMA 23: 200 steps/rev, 1/16 microstepping, 10:1 planetary gearbox
+    // Initialize motor control with default servo configuration (angle-based)
     MotorConfig defaultConfig;
-    defaultConfig.stepsPerRevolution = 200;  // NEMA 23 standard: 1.8° per step
-    defaultConfig.microstepping = 16;         // 1/16 microstepping for smooth motion
-    defaultConfig.gearRatio = 10.0f;          // 10:1 planetary gearbox reduction
-    defaultConfig.maxMotorRPM = 600.0f;       // Maximum motor RPM (typical NEMA 23: 600-1200 RPM)
-    defaultConfig.acceleration = 500.0f;      // Acceleration (steps per second squared at motor)
-    defaultConfig.homeOffset = 0.0f;          // No offset initially
-    defaultConfig.inverted = false;            // Normal direction
-    
-    // Calculate dependent values (maxStepsPerSecond, maxArmAngularVelocity, etc.)
-    defaultConfig.calculateDependentValues(robot.getConfig().upperArmLength);
+    defaultConfig.maxAngularVelocity = 5.0f;
+    defaultConfig.maxAngularAcceleration = 20.0f;
+    defaultConfig.homeOffset = 0.0f;
+    defaultConfig.inverted = false;
     
     for (int i = 0; i < 3; ++i) {
         motorControl.setMotorConfig(i, defaultConfig);
     }
-    
-    // Update velocity limits based on robot geometry
-    motorControl.updateVelocityLimits(robot.getConfig());
-    
-    // Initialize hardware interface (Ethernet for NUCLEO-H7S3L8 by default, can switch to Simulated)
-    // hardwareInterface = std::make_unique<SimulatedHardwareInterface>();
-    hardwareInterface = std::make_unique<EthernetHardwareInterface>();
+
+    // Hardware interface will be provided by ADS/servo integration (placeholder)
+    hardwareInterface = nullptr;
     
     // Initialize sequence controller
-    sequenceController = new SequenceController(motorControl, hardwareInterface.get());
+    sequenceController = new SequenceController(motorControl);
     
     // Initialize UI Manager
     uiManager = new UIManager(robot, motorControl, hardwareInterface.get(), sequenceController, 
@@ -337,22 +326,6 @@ int main() {
                     interpolatedPos = robot.clampToWorkspace(interpolatedPos);
                     robot.setEndEffectorPosition(interpolatedPos);
                 }
-            }
-        }
-        
-        // Sync motor control with hardware if connected and not playing sequence
-        // (Sequence controller handles hardware communication during playback)
-        bool hardwareConnected = uiManager ? uiManager->hardwareConnected() : false;
-        bool motorsEnabled = uiManager ? uiManager->motorsEnabled() : false;
-        if (hardwareConnected && motorsEnabled && 
-            (!sequenceController || sequenceController->getState() == PlaybackState::Stopped)) {
-            auto requiredSteps = motorControl.getRequiredSteps();
-            if (std::abs(requiredSteps[0]) > 0 || std::abs(requiredSteps[1]) > 0 || std::abs(requiredSteps[2]) > 0) {
-                // Send movement command - no feedback required
-                // STM32 will execute movement asynchronously
-                hardwareInterface->moveMotorsRelative(requiredSteps);
-                // Note: Position feedback is optional (RESP_STATUS) and not required for movement
-                // Motor states are tracked locally based on commanded positions
             }
         }
         

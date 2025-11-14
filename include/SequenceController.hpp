@@ -1,7 +1,6 @@
 #pragma once
 
 #include "MotorControl.hpp"
-#include "HardwareInterface.hpp"
 #include <vector>
 #include <string>
 #include <memory>
@@ -33,7 +32,7 @@ struct SequenceConfig {
 
 class SequenceController {
 public:
-    SequenceController(MotorControl& motorControl, HardwareInterface* hardwareInterface);
+    SequenceController(MotorControl& motorControl);
     
     // Sequence management
     void setSequence(const std::vector<size_t>& waypointIndices);
@@ -79,7 +78,6 @@ public:
     
 private:
     MotorControl& motorControl_;
-    HardwareInterface* hardwareInterface_;
     
     // Sequence
     std::vector<size_t> currentSequence_;
@@ -94,7 +92,6 @@ private:
     std::vector<TrajectoryPoint> currentTrajectory_;
     size_t currentTrajectoryIndex_;
     float trajectoryTime_;
-    float lastStreamTime_;
     
     // Statistics
     Statistics stats_;
@@ -102,9 +99,6 @@ private:
     
     // Internal methods
     void startNextWaypoint();
-    void streamTrajectoryPoint(const TrajectoryPoint& point);
-    void sendMoveCommand(const std::array<int32_t, 3>& targetSteps);
-    void sendWaypointSequence(const std::vector<size_t>& waypointIndices);
     bool checkPositionReached();
     void onSequenceComplete();
     void onRepeatComplete();

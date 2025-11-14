@@ -1,19 +1,29 @@
 #include "UIPanels.hpp"
 #include "DeltaRobot.hpp"
 #include "MotorControl.hpp"
+#include "HardwareInterface.hpp"
 #include <cmath>
 #include <algorithm>
+#include <string>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-ControlPanel::ControlPanel(DeltaRobot& robot, MotorControl& motorControl)
-    : robot_(robot), motorControl_(motorControl) {
+ControlPanel::ControlPanel(DeltaRobot& robot, MotorControl& motorControl, HardwareInterface* hardwareInterface)
+    : robot_(robot)
+    , motorControl_(motorControl)
+    , hardwareInterface_(hardwareInterface) {
 }
 
 void ControlPanel::render() {
     ImGui::BeginChild("ControlContent", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    
+    updateAngleHistory();
+    renderHomingControls();
+    ImGui::Separator();
+    renderLiveJointAngles();
+    ImGui::Separator();
     
     // Virtual Controller
     ImGui::Text("Virtual Controller");
@@ -142,16 +152,112 @@ void ControlPanel::render() {
     const auto& motorStates = motorControl_.getMotorStates();
     for (int i = 0; i < 3; ++i) {
         float angleDeg = motorStates[i].currentAngle * 180.0f / M_PI;
-        int32_t steps = motorStates[i].currentSteps;
-        ImGui::Text("Motor %d: %.2f° (%d steps) %s", 
-            i + 1, angleDeg, steps, motorStates[i].isMoving ? "[Moving]" : "");
+        ImGui::Text("Motor %d: %.2f° %s", 
+            i + 1, angleDeg, motorStates[i].isMoving ? "[Moving]" : "");
     }
     
-    ImGui::Separator();
-    auto requiredSteps = motorControl_.getRequiredSteps();
-    ImGui::Text("Required Steps:");
-    ImGui::Text("X: %d  Y: %d  Z: %d", requiredSteps[0], requiredSteps[1], requiredSteps[2]);
-    
     ImGui::EndChild();
+}
+
+void ControlPanel::renderHomingControls() {
+    ImGui::Text("Robot Homing");
+    bool isHomed = motorControl_.isHomed();
+    ImVec4 statusColor = isHomed ? ImVec4(0.2f, 0.9f, 0.2f, 1.0f) : ImVec4(0.9f, 0.2f, 0.2f, 1.0f);
+    ImGui::SameLine();
+    ImGui::TextColored(statusColor, isHomed ? "✓ Homed" : "✗ Not Homed");
+    
+    if (ImGui::Button("Home Robot")) {
+        bool hardwareAttempted = false;
+        bool usedHardware = false;
+        bool homingSuccess = false;
+        
+        bool hardwareReady = hardwareInterface_ && hardwareInterface_->isConnected();
+        if (hardwareReady) {
+            hardwareAttempted = true;
+            homingSuccess = hardwareInterface_->homeMotors();
+            usedHardware = homingSuccess;
+            if (homingSuccess) {
+                motorControl_.setHomed(true);
+            }
+        }
+        
+        if (!homingSuccess) {
+            motorControl_.resetToSoftwareHome();
+            homingSuccess = true;
+        }
+        
+        if (homingSuccess) {
+            lastHomingResult_ = HomingResult::Success;
+            homingStatusColor_ = ImVec4(0.2f, 0.8f, 0.2f, 1.0f);
+            if (usedHardware) {
+                homingStatusMessage_ = "Homing command sent to hardware controller.";
+            } else if (hardwareAttempted) {
+                homingStatusMessage_ = "Hardware homing unavailable; software homing reset all angles to 0°.";
+            } else {
+                homingStatusMessage_ = "Software homing complete. Joint angles reset to 0°.";
+            }
+        } else {
+            lastHomingResult_ = HomingResult::Failure;
+            homingStatusMessage_ = "Unable to home robot. Check hardware connection.";
+            homingStatusColor_ = ImVec4(0.9f, 0.3f, 0.2f, 1.0f);
+        }
+    }
+    
+    if (lastHomingResult_ != HomingResult::None && !homingStatusMessage_.empty()) {
+        ImGui::TextColored(homingStatusColor_, "%s", homingStatusMessage_.c_str());
+    }
+}
+
+void ControlPanel::renderLiveJointAngles() {
+    ImGui::Text("Live Joint Angles");
+    const auto& motorStates = motorControl_.getMotorStates();
+    const auto relativeAngles = motorControl_.getAnglesRelativeToHome();
+    
+    for (int i = 0; i < 3; ++i) {
+        float angleDeg = relativeAngles[i] * 180.0f / M_PI;
+        auto& history = angleHistoryDeg_[i];
+        
+        std::string label = "Motor " + std::to_string(i + 1);
+        ImGui::Text("%s", label.c_str());
+        
+        if (!history.empty()) {
+            float minVal = *std::min_element(history.begin(), history.end());
+            float maxVal = *std::max_element(history.begin(), history.end());
+            if (minVal == maxVal) {
+                minVal -= 1.0f;
+                maxVal += 1.0f;
+            }
+            
+            std::string plotId = "##MotorPlot" + std::to_string(i);
+            ImGui::PlotLines(
+                plotId.c_str(),
+                history.data(),
+                static_cast<int>(history.size()),
+                0,
+                nullptr,
+                minVal,
+                maxVal,
+                ImVec2(0, 60.0f * uiScale)
+            );
+        } else {
+            ImGui::Text("Collecting data...");
+        }
+        
+        ImGui::SameLine();
+        ImGui::Text("Current: %.2f°", angleDeg);
+    }
+}
+
+void ControlPanel::updateAngleHistory() {
+    const auto& motorStates = motorControl_.getMotorStates();
+    const auto relativeAngles = motorControl_.getAnglesRelativeToHome();
+    for (int i = 0; i < 3; ++i) {
+        float angleDeg = relativeAngles[i] * 180.0f / M_PI;
+        auto& history = angleHistoryDeg_[i];
+        history.push_back(angleDeg);
+        if (history.size() > kAngleHistoryCapacity_) {
+            history.erase(history.begin());
+        }
+    }
 }
 

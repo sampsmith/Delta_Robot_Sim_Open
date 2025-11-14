@@ -32,7 +32,7 @@ public:
 // Control Panel - Virtual controller and motor status
 class ControlPanel : public UIPanel {
 public:
-    ControlPanel(DeltaRobot& robot, MotorControl& motorControl);
+    ControlPanel(DeltaRobot& robot, MotorControl& motorControl, HardwareInterface* hardwareInterface = nullptr);
     void render() override;
     const char* getName() const override { return "Control"; }
     
@@ -49,8 +49,26 @@ public:
     float uiScale = 1.0f;
     
 private:
+    void renderHomingControls();
+    void renderLiveJointAngles();
+    void updateAngleHistory();
+    
+    enum class HomingResult {
+        None,
+        Success,
+        Failure
+    };
+    
     DeltaRobot& robot_;
     MotorControl& motorControl_;
+    HardwareInterface* hardwareInterface_ = nullptr;
+    
+    HomingResult lastHomingResult_ = HomingResult::None;
+    std::string homingStatusMessage_;
+    ImVec4 homingStatusColor_ = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    
+    static constexpr size_t kAngleHistoryCapacity_ = 360;
+    std::array<std::vector<float>, 3> angleHistoryDeg_;
 };
 
 // Robot Setup Panel - Dimensions, motors, workspace

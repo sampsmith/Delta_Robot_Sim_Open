@@ -164,39 +164,23 @@ void SequencePanel::render() {
         ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Normal speed");
     }
     
-    // Show real motor speeds
+    // Show angular limits
     MotorConfig motorCfg = motorControl_.getMotorConfig(0);
-    DeltaRobotConfig robotCfg = robot_.getConfig();
-    motorCfg.calculateDependentValues(robotCfg.upperArmLength);
-    
-    float effectiveMotorRPM = motorCfg.maxMotorRPM * speedMultiplier;
-    float effectiveArmRPM = effectiveMotorRPM / motorCfg.gearRatio;
-    float effectiveEndEffectorVel = motorCfg.maxEndEffectorVelocity * speedMultiplier;
+    float effectiveAngularVelocity = motorCfg.maxAngularVelocity * speedMultiplier;
+    float effectiveAngularVelocityDeg = effectiveAngularVelocity * 180.0f / M_PI;
+    float effectiveAngularAccel = motorCfg.maxAngularAcceleration * speedMultiplier;
+    float effectiveAngularAccelDeg = effectiveAngularAccel * 180.0f / M_PI;
     
     ImGui::Separator();
-    ImGui::Text("Real Motor Speeds at %.2fx:", speedMultiplier);
-    ImGui::BulletText("Motor RPM: %.0f", effectiveMotorRPM);
-    ImGui::BulletText("Arm RPM: %.1f", effectiveArmRPM);
-    ImGui::BulletText("End Effector Velocity: %.3f m/s (%.1f mm/s)", 
-        effectiveEndEffectorVel, effectiveEndEffectorVel * 1000.0f);
+    ImGui::Text("Servo Targets at %.2fx:", speedMultiplier);
+    ImGui::BulletText("Angular Velocity: %.2f rad/s (%.1f deg/s)", 
+        effectiveAngularVelocity, effectiveAngularVelocityDeg);
+    ImGui::BulletText("Angular Acceleration: %.2f rad/s² (%.0f deg/s²)", 
+        effectiveAngularAccel, effectiveAngularAccelDeg);
     
     ImGui::Separator();
     ImGui::Text("Streaming Configuration");
-    ImGui::Separator();
-    int streamingMode = static_cast<int>(config.streamingMode);
-    const char* modes[] = { "Batch Mode", "Real-Time Stream" };
-    if (ImGui::Combo("Streaming Mode", &streamingMode, modes, 2)) {
-        config.streamingMode = static_cast<StreamingMode>(streamingMode);
-        sequenceController_->setConfig(config);
-    }
-    
-    if (config.streamingMode == StreamingMode::RealTimeStream) {
-        float updateRate = config.updateRate;
-        if (ImGui::DragFloat("Update Rate (Hz)", &updateRate, 1.0f, 10.0f, 200.0f)) {
-            config.updateRate = updateRate;
-            sequenceController_->setConfig(config);
-        }
-    }
+    ImGui::TextDisabled("ADS/servo streaming will replace this placeholder once hardware integration is ready.");
     
     ImGui::Separator();
     if (state == PlaybackState::Playing || state == PlaybackState::Paused) {

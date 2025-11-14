@@ -10,7 +10,7 @@
 UIManager::UIManager(DeltaRobot& robot, MotorControl& motorControl, 
                      HardwareInterface* hardwareInterface, SequenceController* sequenceController,
                      bool& showGrid, bool& showAxes, bool& showWorkspace, bool& showLabels, bool& wireframeMode)
-    : controlPanel_(robot, motorControl)
+    : controlPanel_(robot, motorControl, hardwareInterface)
     , robotSetupPanel_(robot, motorControl)
     , waypointPanel_(robot, motorControl)
     , sequencePanel_(robot, motorControl, sequenceController)

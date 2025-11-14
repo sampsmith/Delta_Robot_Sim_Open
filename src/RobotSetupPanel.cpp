@@ -199,124 +199,46 @@ void RobotSetupPanel::renderDimensionsTab() {
     
     if (configChanged) {
         robot_.setConfig(config);
-        motorControl_.updateVelocityLimits(config);
     }
 }
 
 void RobotSetupPanel::renderMotorsTab() {
     MotorConfig motorConfig = motorControl_.getMotorConfig(0);
-    DeltaRobotConfig robotConfig = robot_.getConfig();
     bool motorChanged = false;
     
-    ImGui::Text("Motor Configuration (NEMA 23)");
+    ImGui::Text("Servo Configuration");
     ImGui::Separator();
     
-    // Motor Presets
-    ImGui::Text("Presets:");
-    if (ImGui::Button("NEMA 23 Standard (16 microstep, 10:1 gearbox)")) {
-        motorConfig.stepsPerRevolution = 200;
-        motorConfig.microstepping = 16;
-        motorConfig.gearRatio = 10.0f;
-        motorConfig.maxMotorRPM = 600.0f;
-        motorConfig.acceleration = 500.0f;
-        motorChanged = true;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("High Speed (16 microstep, 10:1 gearbox)")) {
-        motorConfig.stepsPerRevolution = 200;
-        motorConfig.microstepping = 16;
-        motorConfig.gearRatio = 10.0f;
-        motorConfig.maxMotorRPM = 1200.0f;
-        motorConfig.acceleration = 1000.0f;
-        motorChanged = true;
-    }
-    
-    ImGui::Separator();
-    
-    // Basic Motor Settings
-    if (ImGui::DragInt("Steps per Revolution", &motorConfig.stepsPerRevolution, 1, 200, 400)) {
+    ImGui::Text("Global Limits:");
+    float maxVelDeg = motorConfig.maxAngularVelocity * 180.0f / M_PI;
+    if (ImGui::DragFloat("Max Angular Velocity (deg/s)", &maxVelDeg, 1.0f, 10.0f, 720.0f, "%.1f")) {
+        motorConfig.maxAngularVelocity = maxVelDeg * M_PI / 180.0f;
         motorChanged = true;
     }
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("NEMA 23 standard: 200 steps/rev (1.8° per step)");
+        ImGui::SetTooltip("Limit joint slew rate when commanding servo angles.");
     }
     
-    int microstepping = motorConfig.microstepping;
-    const char* microstepOptions[] = { "1", "2", "4", "8", "16", "32", "64" };
-    int microstepIndex = 0;
-    for (int i = 0; i < 7; ++i) {
-        if (microstepping == (1 << i)) {
-            microstepIndex = i;
-            break;
-        }
-    }
-    if (ImGui::Combo("Microstepping", &microstepIndex, microstepOptions, 7)) {
-        motorConfig.microstepping = 1 << microstepIndex;
-        motorChanged = true;
-    }
-    
-    if (ImGui::DragFloat("Gear Ratio", &motorConfig.gearRatio, 0.1f, 1.0f, 100.0f, "%.1f:1")) {
+    float maxAccelDeg = motorConfig.maxAngularAcceleration * 180.0f / M_PI;
+    if (ImGui::DragFloat("Max Angular Accel (deg/s²)", &maxAccelDeg, 5.0f, 10.0f, 5000.0f, "%.0f")) {
+        motorConfig.maxAngularAcceleration = maxAccelDeg * M_PI / 180.0f;
         motorChanged = true;
     }
     ImGui::SameLine();
     ImGui::TextDisabled("(?)");
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Planetary gearbox reduction ratio (10:1 = motor turns 10x for 1x arm rotation)");
+        ImGui::SetTooltip("Caps how aggressively the servo targets can change.");
     }
     
     ImGui::Separator();
-    
-    // Motor Speed
-    if (ImGui::DragFloat("Max Motor RPM", &motorConfig.maxMotorRPM, 10.0f, 100.0f, 3000.0f, "%.0f")) {
-        motorChanged = true;
-    }
-    ImGui::SameLine();
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Maximum motor RPM (typical NEMA 23: 600-1200 RPM)");
-    }
-    
-    if (ImGui::DragFloat("Acceleration (steps/s²)", &motorConfig.acceleration, 10.0f, 100.0f, 5000.0f, "%.0f")) {
-        motorChanged = true;
-    }
-    
-    ImGui::Separator();
-    ImGui::Text("Calculated Values:");
-    
-    motorConfig.calculateDependentValues(robotConfig.upperArmLength);
-    
-    ImGui::Text("At Motor Shaft:");
-    ImGui::BulletText("Max Steps/Sec: %.0f", motorConfig.maxStepsPerSecond);
-    
-    float totalStepsPerRev = motorConfig.stepsPerRevolution * motorConfig.microstepping;
-    ImGui::BulletText("Steps/Rev (motor): %.0f", totalStepsPerRev);
-    
-    ImGui::Text("At Arm Output (after gearbox):");
-    float maxArmRPM = motorConfig.maxMotorRPM / motorConfig.gearRatio;
-    ImGui::BulletText("Max Arm RPM: %.1f", maxArmRPM);
-    ImGui::BulletText("Max Arm Angular Velocity: %.3f rad/s", motorConfig.maxArmAngularVelocity);
-    ImGui::BulletText("Max Arm Angular Velocity: %.2f deg/s", motorConfig.maxArmAngularVelocity * 180.0f / M_PI);
-    
-    ImGui::Text("End Effector Velocity:");
-    ImGui::BulletText("Max Linear Velocity: %.3f m/s", motorConfig.maxEndEffectorVelocity);
-    ImGui::BulletText("Max Linear Velocity: %.1f mm/s", motorConfig.maxEndEffectorVelocity * 1000.0f);
-    
-    ImGui::Separator();
-    ImGui::Text("Resolution:");
-    float stepsPerDegreeAtArm = (totalStepsPerRev * motorConfig.gearRatio) / 360.0f;
-    float degreesPerStepAtArm = 1.0f / stepsPerDegreeAtArm;
-    ImGui::BulletText("Total Steps/Rev (at arm): %.0f", totalStepsPerRev * motorConfig.gearRatio);
-    ImGui::BulletText("Steps per Degree (at arm): %.2f", stepsPerDegreeAtArm);
-    ImGui::BulletText("Degrees per Step (at arm): %.4f°", degreesPerStepAtArm);
+    ImGui::TextWrapped("These values apply to all three joints. Use the section below for individual tweaks such as inversion or home offsets.");
     
     if (motorChanged) {
-        motorConfig.calculateDependentValues(robotConfig.upperArmLength);
         for (int i = 0; i < 3; ++i) {
             motorControl_.setMotorConfig(i, motorConfig);
         }
-        motorControl_.updateVelocityLimits(robotConfig);
     }
     
     ImGui::Separator();
@@ -376,12 +298,5 @@ void RobotSetupPanel::renderWorkspaceTab() {
         config.minMotorAngle * 180.0f / M_PI,
         config.maxMotorAngle * 180.0f / M_PI);
     
-    ImGui::Separator();
-    MotorConfig motorConfig = motorControl_.getMotorConfig(0);
-    float totalStepsPerRev = motorConfig.stepsPerRevolution * motorConfig.microstepping * motorConfig.gearRatio;
-    float stepsPerMeter = totalStepsPerRev / (2.0f * M_PI * config.upperArmLength);
-    ImGui::Text("Motor Resolution:");
-    ImGui::BulletText("Steps per meter: %.0f", stepsPerMeter);
-    ImGui::BulletText("Position resolution: %.4f mm", 1000.0f / stepsPerMeter);
 }
 

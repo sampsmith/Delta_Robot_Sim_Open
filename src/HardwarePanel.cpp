@@ -82,56 +82,8 @@ void HardwarePanel::render() {
             // STM32 reads 3 limit switches and executes homing sequence
             // After homing completes, STM32 sends RESP_HOMED with [0, 0, 0]
             if (hardwareInterface_->homeMotors()) {
-                // RESP_HOMED response received (handled in homeMotors())
-                // After homing, positions will be [0, 0, 0]
-                // Set physical home position to 0 (where switches triggered)
-                for (int i = 0; i < 3; ++i) {
-                    motorControl_.setPhysicalHomePosition(i, 0);
-                }
-                motorControl_.setHomed(true);
+                motorControl_.resetToSoftwareHome();
             }
-        }
-        
-        ImGui::Separator();
-        ImGui::Text("Home Configuration:");
-        
-        const auto& homePos = motorControl_.getHomePosition();
-        for (int i = 0; i < 3; ++i) {
-            ImGui::PushID(i);
-            ImGui::Text("Motor %d:", i + 1);
-            
-            int32_t physicalHome = homePos.physicalHomeSteps[i];
-            if (ImGui::InputInt("Physical Home (steps)", &physicalHome)) {
-                motorControl_.setPhysicalHomePosition(i, physicalHome);
-            }
-            ImGui::SameLine();
-            ImGui::TextDisabled("(?)");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Step position when upper limit sensor is triggered");
-            }
-            
-            int32_t homeOffset = homePos.homeOffsetSteps[i];
-            if (ImGui::InputInt("Home Offset (steps)", &homeOffset)) {
-                motorControl_.setHomeOffsetSteps(i, homeOffset);
-            }
-            ImGui::SameLine();
-            ImGui::TextDisabled("(?)");
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Offset from physical sensor to official home position");
-            }
-            
-            ImGui::Text("Official Home: %d steps", homePos.officialHomeSteps[i]);
-            
-            ImGui::PopID();
-        }
-        
-        if (ImGui::Button("Set Current as Official Home")) {
-            const auto& motorStates = motorControl_.getMotorStates();
-            for (int i = 0; i < 3; ++i) {
-                int32_t currentSteps = motorStates[i].currentSteps;
-                motorControl_.setOfficialHomePosition(i, currentSteps);
-            }
-            motorControl_.setHomed(true);
         }
         
         ImGui::Separator();
@@ -152,11 +104,7 @@ void HardwarePanel::render() {
         ImGui::Text("Motors: %s", motorsEnabled_ ? "Enabled" : "Disabled");
         
         ImGui::Separator();
-        std::array<int32_t, 3> hwPositions;
-        if (hardwareInterface_->getMotorPositions(hwPositions)) {
-            ImGui::Text("Hardware Positions:");
-            ImGui::Text("X: %d  Y: %d  Z: %d", hwPositions[0], hwPositions[1], hwPositions[2]);
-        }
+        ImGui::Text("Hardware telemetry will be provided via ADS servo integration.");
     }
     
     ImGui::EndChild();
