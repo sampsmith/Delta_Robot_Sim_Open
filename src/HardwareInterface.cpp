@@ -3,12 +3,25 @@
 #include <iostream>
 #include <sstream>
 #include <cstring>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
+
+// Platform-specific socket includes
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #include <io.h>
+    #pragma comment(lib, "ws2_32.lib")
+    #define close closesocket
+    #define GET_SOCKET_ERROR() WSAGetLastError()
+    typedef int socklen_t;
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    #include <fcntl.h>
+    #include <errno.h>
+    #define GET_SOCKET_ERROR() errno
+#endif
 
 // Simulated Hardware Interface Implementation
 SimulatedHardwareInterface::SimulatedHardwareInterface()
@@ -148,6 +161,10 @@ bool SimulatedHardwareInterface::setMotorConfig(const MotorConfig& config, int m
 // If needed in the future, implement using binary protocol instead
 
 // Ethernet Hardware Interface Implementation
+#ifdef _WIN32
+static int winsockRefCount = 0;
+#endif
+
 EthernetHardwareInterface::EthernetHardwareInterface()
     : connectionState_(ConnectionState::Disconnected)
     , socketHandle_(nullptr)
@@ -155,11 +172,28 @@ EthernetHardwareInterface::EthernetHardwareInterface()
     , timeoutMs_(5000)
 {
     socketHandle_ = new int(-1);  // Socket file descriptor
+#ifdef _WIN32
+    // Initialize Winsock (reference counted)
+    if (winsockRefCount == 0) {
+        WSADATA wsaData;
+        if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+            std::cerr << "[Ethernet] Failed to initialize Winsock" << std::endl;
+        }
+    }
+    winsockRefCount++;
+#endif
 }
 
 EthernetHardwareInterface::~EthernetHardwareInterface() {
     disconnect();
     delete static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    // Cleanup Winsock (reference counted)
+    winsockRefCount--;
+    if (winsockRefCount == 0) {
+        WSACleanup();
+    }
+#endif
 }
 
 bool EthernetHardwareInterface::parseIPAddress(const std::string& address, std::string& ip, int& port) {
@@ -202,8 +236,13 @@ bool EthernetHardwareInterface::connect(const std::string& address) {
     }
     
     // Set socket to non-blocking for timeout
+#ifdef _WIN32
+    u_long mode = 1;
+    ioctlsocket(sockfd, FIONBIO, &mode);
+#else
     int flags = fcntl(sockfd, F_GETFL, 0);
     fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+#endif
     
     // Set up server address
     struct sockaddr_in serverAddr;
@@ -211,6 +250,16 @@ bool EthernetHardwareInterface::connect(const std::string& address) {
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(serverPort_);
     
+#ifdef _WIN32
+    serverAddr.sin_addr.s_addr = inet_addr(serverIP_.c_str());
+    if (serverAddr.sin_addr.s_addr == INADDR_NONE) {
+        connectionState_ = ConnectionState::Error;
+        closesocket(sockfd);
+        sockfd = -1;
+        if (onError_) onError_("Invalid IP address");
+        return false;
+    }
+#else
     if (inet_pton(AF_INET, serverIP_.c_str(), &serverAddr.sin_addr) <= 0) {
         connectionState_ = ConnectionState::Error;
         close(sockfd);
@@ -218,11 +267,17 @@ bool EthernetHardwareInterface::connect(const std::string& address) {
         if (onError_) onError_("Invalid IP address");
         return false;
     }
+#endif
     
     // Attempt connection with timeout
     int result = ::connect(sockfd, (struct sockaddr*)&serverAddr, sizeof(serverAddr));
     if (result < 0) {
-        if (errno == EINPROGRESS) {
+        int error = GET_SOCKET_ERROR();
+#ifdef _WIN32
+        if (error == WSAEWOULDBLOCK || error == WSAEINPROGRESS) {
+#else
+        if (error == EINPROGRESS) {
+#endif
             // Connection in progress, wait with timeout
             fd_set writefds;
             struct timeval timeout;
@@ -231,10 +286,14 @@ bool EthernetHardwareInterface::connect(const std::string& address) {
             timeout.tv_sec = timeoutMs_ / 1000;
             timeout.tv_usec = (timeoutMs_ % 1000) * 1000;
             
-            result = select(sockfd + 1, NULL, &writefds, NULL, &timeout);
+            result = select((int)(sockfd + 1), NULL, &writefds, NULL, &timeout);
             if (result <= 0) {
                 connectionState_ = ConnectionState::Error;
+#ifdef _WIN32
+                closesocket(sockfd);
+#else
                 close(sockfd);
+#endif
                 sockfd = -1;
                 if (onError_) onError_("Connection timeout");
                 return false;
@@ -243,17 +302,25 @@ bool EthernetHardwareInterface::connect(const std::string& address) {
             // Check if connection succeeded
             int so_error;
             socklen_t len = sizeof(so_error);
-            getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+            getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len);
             if (so_error != 0) {
                 connectionState_ = ConnectionState::Error;
+#ifdef _WIN32
+                closesocket(sockfd);
+#else
                 close(sockfd);
+#endif
                 sockfd = -1;
                 if (onError_) onError_("Connection failed");
                 return false;
             }
         } else {
             connectionState_ = ConnectionState::Error;
+#ifdef _WIN32
+            closesocket(sockfd);
+#else
             close(sockfd);
+#endif
             sockfd = -1;
             if (onError_) onError_("Connection failed");
             return false;
@@ -261,12 +328,21 @@ bool EthernetHardwareInterface::connect(const std::string& address) {
     }
     
     // Set socket back to blocking
+#ifdef _WIN32
+    mode = 0;
+    ioctlsocket(sockfd, FIONBIO, &mode);
+#else
     flags = fcntl(sockfd, F_GETFL, 0);
     fcntl(sockfd, F_SETFL, flags & ~O_NONBLOCK);
+#endif
     
     // Set socket options for keep-alive
     int opt = 1;
+#ifdef _WIN32
+    setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, (const char*)&opt, sizeof(opt));
+#else
     setsockopt(sockfd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+#endif
     
     connectionState_ = ConnectionState::Connected;
     std::cout << "[Ethernet] Connected to " << serverIP_ << ":" << serverPort_ << std::endl;
@@ -278,7 +354,11 @@ bool EthernetHardwareInterface::connect(const std::string& address) {
 void EthernetHardwareInterface::disconnect() {
     int& sockfd = *static_cast<int*>(socketHandle_);
     if (sockfd >= 0) {
+#ifdef _WIN32
+        closesocket(sockfd);
+#else
         close(sockfd);
+#endif
         sockfd = -1;
         std::cout << "[Ethernet] Disconnected" << std::endl;
     }
@@ -293,14 +373,23 @@ std::vector<uint8_t> EthernetHardwareInterface::readBinaryResponse() {
     int& sockfd = *static_cast<int*>(socketHandle_);
     
     // Set receive timeout
+#ifdef _WIN32
+    DWORD timeout = timeoutMs_;
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+#else
     struct timeval timeout;
     timeout.tv_sec = timeoutMs_ / 1000;
     timeout.tv_usec = (timeoutMs_ % 1000) * 1000;
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#endif
     
     // Read packet header first (type + length = 3 bytes minimum)
     uint8_t header[3];
+#ifdef _WIN32
+    int received = recv(sockfd, (char*)header, 3, 0);
+#else
     ssize_t received = recv(sockfd, header, 3, 0);
+#endif
     if (received < 3) {
         if (received == 0) {
             connectionState_ = ConnectionState::Disconnected;
@@ -318,14 +407,22 @@ std::vector<uint8_t> EthernetHardwareInterface::readBinaryResponse() {
     // Read payload + checksum
     if (payloadLength > 0) {
         std::vector<uint8_t> payload(payloadLength + 1);  // +1 for checksum
+#ifdef _WIN32
+        received = recv(sockfd, (char*)payload.data(), payloadLength + 1, 0);
+#else
         received = recv(sockfd, payload.data(), payloadLength + 1, 0);
+#endif
         if (received > 0) {
             response.insert(response.end(), payload.begin(), payload.begin() + received);
         }
     } else {
         // Read checksum byte
         uint8_t checksum;
+#ifdef _WIN32
+        received = recv(sockfd, (char*)&checksum, 1, 0);
+#else
         received = recv(sockfd, &checksum, 1, 0);
+#endif
         if (received > 0) {
             response.push_back(checksum);
         }
@@ -344,7 +441,11 @@ bool EthernetHardwareInterface::moveMotorsToSteps(const std::array<int32_t, 3>& 
     
     // Send packet
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send failed");
@@ -373,7 +474,11 @@ bool EthernetHardwareInterface::sendWaypointSequence(const std::vector<std::pair
     
     // Send packet
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send sequence failed");
@@ -400,7 +505,11 @@ bool EthernetHardwareInterface::moveMotorsRelative(const std::array<int32_t, 3>&
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send failed");
@@ -427,7 +536,11 @@ bool EthernetHardwareInterface::setMotorSpeed(int motorIndex, float speed) {
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send speed command failed");
@@ -454,7 +567,11 @@ bool EthernetHardwareInterface::setMotorAcceleration(int motorIndex, float accel
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send acceleration command failed");
@@ -480,7 +597,11 @@ bool EthernetHardwareInterface::enableMotors(bool enable) {
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send failed");
@@ -507,7 +628,11 @@ bool EthernetHardwareInterface::stopMotors() {
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send stop command failed");
@@ -541,7 +666,11 @@ bool EthernetHardwareInterface::homeMotors() {
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send home command failed");
@@ -582,7 +711,11 @@ bool EthernetHardwareInterface::setMotorPosition(int motorIndex, int32_t steps) 
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send set position command failed");
@@ -608,7 +741,11 @@ bool EthernetHardwareInterface::getMotorPositions(std::array<int32_t, 3>& positi
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         return false;
     }
@@ -638,7 +775,11 @@ bool EthernetHardwareInterface::getMotorStates(std::array<bool, 3>& isMoving) {
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         return false;
     }
@@ -681,7 +822,11 @@ bool EthernetHardwareInterface::setMicrostepping(int motorIndex, int microsteps)
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send microstepping config failed");
@@ -710,11 +855,11 @@ bool EthernetHardwareInterface::setMotorConfig(const MotorConfig& config, int mo
     // 320,000 steps/sec is theoretical max, but real hardware may be slower
     // Limit to reasonable maximum for safety (e.g., 100,000 steps/sec)
     float maxRealisticSpeed = 100000.0f;  // 100k steps/sec is very fast but achievable
-    float clampedSpeed = std::min(config.maxStepsPerSecond, maxRealisticSpeed);
+    float clampedSpeed = (config.maxStepsPerSecond < maxRealisticSpeed) ? config.maxStepsPerSecond : maxRealisticSpeed;
     
     // Clamp acceleration to reasonable limits (e.g., 10,000 steps/sec²)
     float maxRealisticAccel = 10000.0f;
-    float clampedAccel = std::min(config.acceleration, maxRealisticAccel);
+    float clampedAccel = (config.acceleration < maxRealisticAccel) ? config.acceleration : maxRealisticAccel;
     
     Packet packet = Commands::setConfig(
         motorIndex, 
@@ -725,7 +870,11 @@ bool EthernetHardwareInterface::setMotorConfig(const MotorConfig& config, int mo
     std::vector<uint8_t> data = PacketEncoder::encode(packet);
     
     int& sockfd = *static_cast<int*>(socketHandle_);
+#ifdef _WIN32
+    int sent = send(sockfd, (const char*)data.data(), (int)data.size(), 0);
+#else
     ssize_t sent = send(sockfd, data.data(), data.size(), 0);
+#endif
     if (sent < 0) {
         connectionState_ = ConnectionState::Error;
         if (onError_) onError_("Send motor config failed");

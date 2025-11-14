@@ -25,6 +25,16 @@ This is the software foundation for an open source delta robot project. The code
 
 ### 1. Install Dependencies
 
+#### Windows:
+1. Install [CMake](https://cmake.org/download/) (3.15 or higher)
+2. Install a C++ compiler:
+   - **Option 1**: Install [Visual Studio 2019/2022](https://visualstudio.microsoft.com/) with "Desktop development with C++" workload
+   - **Option 2**: Install [MinGW-w64](https://www.mingw-w64.org/downloads/)
+3. Install [GLFW](https://www.glfw.org/download.html) (pre-built binaries) or build from source
+   - For Visual Studio: Download pre-built binaries and set `GLFW3_DIR` environment variable
+   - For MinGW: Use vcpkg or build from source
+4. Install OpenGL development libraries (usually included with Visual Studio or MinGW)
+
 #### Ubuntu/Debian:
 ```bash
 sudo apt-get update
@@ -71,15 +81,32 @@ Or download from https://github.com/g-truc/glm/releases
 
 ## Building
 
-### Option 1: Using the build script
+### Windows
 
+#### Option 1: Using the build script
+```batch
+build.bat
+```
+
+#### Option 2: Manual build
+```batch
+mkdir build
+cd build
+cmake .. -G "Visual Studio 17 2022" -A x64
+cmake --build . --config Release
+```
+
+The executable will be in the `build/Release/` directory (Visual Studio) or `build/` directory (MinGW).
+
+### Linux/macOS
+
+#### Option 1: Using the build script
 ```bash
 chmod +x build.sh
 ./build.sh
 ```
 
-### Option 2: Manual build
-
+#### Option 2: Manual build
 ```bash
 mkdir build
 cd build
@@ -91,6 +118,16 @@ The executable will be in the `build/` directory.
 
 ## Running
 
+### Windows
+```batch
+build\Release\DeltaRobotSim.exe
+```
+or for MinGW:
+```batch
+build\DeltaRobotSim.exe
+```
+
+### Linux/macOS
 ```bash
 ./build/DeltaRobotSim
 ```
