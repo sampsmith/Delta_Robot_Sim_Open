@@ -23,6 +23,7 @@
 #include "Renderer.hpp"
 #include "MotorControl.hpp"
 #include "HardwareInterface.hpp"
+#include "ADSInterface.hpp"
 #include "SequenceController.hpp"
 #include "UIPanels.hpp"
 
@@ -167,8 +168,8 @@ int main() {
         motorControl.setMotorConfig(i, defaultConfig);
     }
 
-    // Hardware interface will be provided by ADS/servo integration (placeholder)
-    hardwareInterface = nullptr;
+    // Initialize ADS hardware interface for Beckhoff TwinCAT
+    hardwareInterface = std::make_unique<ADSInterface>();
     
     // Initialize sequence controller
     sequenceController = new SequenceController(motorControl);
@@ -263,6 +264,22 @@ int main() {
         
         // Update motor control
         motorControl.update(deltaTime);
+        
+        // Stream joint angles to ADS/Beckhoff PLC in real-time
+        if (hardwareInterface && hardwareInterface->isConnected()) {
+            ADSInterface* adsInterface = dynamic_cast<ADSInterface*>(hardwareInterface.get());
+            if (adsInterface) {
+                // Get current motor angles from motor control
+                const auto& motorStates = motorControl.getMotorStates();
+                std::array<float, 3> jointAngles = {
+                    motorStates[0].currentAngle,
+                    motorStates[1].currentAngle,
+                    motorStates[2].currentAngle
+                };
+                // Send to PLC (ADS handles synchronization internally)
+                adsInterface->sendJointAngles(jointAngles);
+            }
+        }
         
         // Update sequence controller (handles playback and streaming)
         if (sequenceController) {

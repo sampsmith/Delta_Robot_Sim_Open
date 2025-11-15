@@ -1,12 +1,13 @@
 #include "UIPanels.hpp"
 #include "HardwareInterface.hpp"
+#include "ADSInterface.hpp"
 #include "MotorControl.hpp"
 #include <sstream>
 #include <cstring>
 
 HardwarePanel::HardwarePanel(HardwareInterface* hardwareInterface, MotorControl& motorControl)
     : hardwareInterface_(hardwareInterface), motorControl_(motorControl) {
-    std::strncpy(ipAddress_, "192.168.1.100", sizeof(ipAddress_) - 1);
+    std::strncpy(ipAddress_, "1.1.1.1.1.1", sizeof(ipAddress_) - 1);
     ipAddress_[sizeof(ipAddress_) - 1] = '\0';
     port_ = 8080;
 }
@@ -45,20 +46,46 @@ void HardwarePanel::render() {
     ImGui::Separator();
     
     if (!hardwareConnected_) {
-        ImGui::Text("Connect to NUCLEO-H7S3L8:");
-        ImGui::InputText("IP Address", ipAddress_, sizeof(ipAddress_));
-        ImGui::InputInt("Port", &port_);
+        ImGui::Text("Connect to Beckhoff TwinCAT PLC:");
+        ImGui::InputText("AMS Net ID", ipAddress_, sizeof(ipAddress_));
+        ImGui::SetTooltip("Format: X.X.X.X.X.X (e.g., 1.1.1.1.1.1)");
         
-        std::ostringstream address;
-        address << ipAddress_ << ":" << port_;
-        
-        if (ImGui::Button("Connect")) {
-            hardwareInterface_->connect(address.str());
+        // Check if this is an ADS interface
+        ADSInterface* adsInterface = dynamic_cast<ADSInterface*>(hardwareInterface_);
+        if (adsInterface) {
+            if (ImGui::Button("Connect to PLC")) {
+                hardwareInterface_->connect(ipAddress_);
+            }
+            
+            ImGui::Separator();
+            ImGui::Text("ADS Configuration:");
+            float updateRate = adsInterface->getUpdateRate();
+            if (ImGui::DragFloat("Update Rate (Hz)", &updateRate, 1.0f, 10.0f, 500.0f, "%.0f")) {
+                adsInterface->setUpdateRate(updateRate);
+            }
+            ImGui::SetTooltip("How often to send joint angles to PLC (higher = smoother but more network traffic)");
+            
+            char varName[256];
+            std::strncpy(varName, adsInterface->getVariableName().c_str(), sizeof(varName) - 1);
+            varName[sizeof(varName) - 1] = '\0';
+            if (ImGui::InputText("PLC Variable Name", varName, sizeof(varName))) {
+                adsInterface->setVariableName(varName);
+            }
+            ImGui::SetTooltip("PLC variable name for joint angles (e.g., MAIN.fJointAngles)");
+            
+            ImGui::Separator();
+            ImGui::Text("Default AMS Net ID: 1.1.1.1.1.1");
+            ImGui::Text("Format: X.X.X.X.X.X (6 numbers, 0-255 each)");
+        } else {
+            // Fallback for other interfaces
+            ImGui::InputInt("Port", &port_);
+            std::ostringstream address;
+            address << ipAddress_ << ":" << port_;
+            
+            if (ImGui::Button("Connect")) {
+                hardwareInterface_->connect(address.str());
+            }
         }
-        
-        ImGui::Separator();
-        ImGui::Text("Default: 192.168.1.100:8080");
-        ImGui::Text("Format: IP:PORT or just IP");
     } else {
         if (ImGui::Button("Disconnect")) {
             hardwareInterface_->disconnect();

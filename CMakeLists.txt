@@ -98,6 +98,7 @@ set(SOURCES
     src/DeltaRobot.cpp
     src/Renderer.cpp
     src/MotorControl.cpp
+    src/ADSInterface.cpp
     src/SequenceController.cpp
     src/ControlPanel.cpp
     src/RobotSetupPanel.cpp
@@ -123,6 +124,57 @@ target_link_libraries(${PROJECT_NAME}
 # Windows-specific libraries
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} ws2_32)
+    
+    # TwinCAT ADS library (typically installed with TwinCAT)
+    # Default path: C:\TwinCAT\AdsApi\TcAdsDll\Lib\TcAdsDll.lib
+    # Headers: C:\TwinCAT\AdsApi\TcAdsDll\Include\
+    # DLL: C:\TwinCAT\AdsApi\TcAdsDll\Lib\TcAdsDll.dll (runtime)
+    # User can override with TWINCAT_ADS_LIB_PATH
+    set(TWINCAT_ADS_BASE_PATH "")
+    if(DEFINED TWINCAT_ADS_LIB_PATH)
+        set(TWINCAT_ADS_BASE_PATH "${TWINCAT_ADS_LIB_PATH}/..")
+        target_link_libraries(${PROJECT_NAME} ${TWINCAT_ADS_LIB_PATH}/TcAdsDll.lib)
+        target_include_directories(${PROJECT_NAME} PRIVATE ${TWINCAT_ADS_BASE_PATH}/Include)
+    elseif(EXISTS "C:/TwinCAT/AdsApi/TcAdsDll/x64/lib/TcAdsDll.lib")
+        # Use x64 library for 64-bit builds
+        set(TWINCAT_ADS_BASE_PATH "C:/TwinCAT/AdsApi/TcAdsDll")
+        target_link_libraries(${PROJECT_NAME} "C:/TwinCAT/AdsApi/TcAdsDll/x64/lib/TcAdsDll.lib")
+        target_include_directories(${PROJECT_NAME} PRIVATE "C:/TwinCAT/AdsApi/TcAdsDll/Include")
+    elseif(EXISTS "C:/TwinCAT/AdsApi/TcAdsDll/Lib/TcAdsDll.lib")
+        # Fallback to 32-bit library
+        set(TWINCAT_ADS_BASE_PATH "C:/TwinCAT/AdsApi/TcAdsDll")
+        target_link_libraries(${PROJECT_NAME} "C:/TwinCAT/AdsApi/TcAdsDll/Lib/TcAdsDll.lib")
+        target_include_directories(${PROJECT_NAME} PRIVATE "C:/TwinCAT/AdsApi/TcAdsDll/Include")
+    else()
+        message(WARNING "TwinCAT ADS library not found. Please install TwinCAT or set TWINCAT_ADS_LIB_PATH")
+    endif()
+    
+    # Copy DLL to output directory for runtime
+    if(NOT "${TWINCAT_ADS_BASE_PATH}" STREQUAL "")
+        # Try x64 folder first (for 64-bit builds)
+        set(TWINCAT_DLL_PATH "${TWINCAT_ADS_BASE_PATH}/x64/TcAdsDll.dll")
+        if(EXISTS "${TWINCAT_DLL_PATH}")
+            add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${TWINCAT_DLL_PATH}"
+                $<TARGET_FILE_DIR:${PROJECT_NAME}>
+                COMMENT "Copying TcAdsDll.dll to output directory"
+            )
+        else()
+            # Try root folder
+            set(TWINCAT_DLL_PATH "${TWINCAT_ADS_BASE_PATH}/TcAdsDll.dll")
+            if(EXISTS "${TWINCAT_DLL_PATH}")
+                add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${TWINCAT_DLL_PATH}"
+                    $<TARGET_FILE_DIR:${PROJECT_NAME}>
+                    COMMENT "Copying TcAdsDll.dll to output directory"
+                )
+            else()
+                message(WARNING "TcAdsDll.dll not found. The DLL must be available at runtime (in PATH or executable directory).")
+            endif()
+        endif()
+    endif()
 endif()
 
 # Include directories for target

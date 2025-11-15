@@ -142,3 +142,6 @@ private:
     bool motorsEnabled_;
 };
 
+// Forward declaration for ADS interface
+class ADSInterface;
+

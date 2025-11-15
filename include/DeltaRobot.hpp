@@ -76,6 +76,18 @@ public:
     
     // Get motor angles (in radians)
     const std::array<float, 3>& getMotorAngles() const { return state_.motorAngles; }
+    
+    // Forward Kinematics: Calculate end-effector position from motor angles
+    // Returns the calculated end-effector position
+    glm::vec3 calculateForwardKinematics(const std::array<float, 3>& motorAngles) const;
+    
+    // Validate IK solution using FK
+    // Returns true if IK→FK produces position within tolerance of desired position
+    bool validateIK(const glm::vec3& desiredPosition, const std::array<float, 3>& motorAngles, 
+                   float tolerance = 0.001f) const;
+    
+    // Get IK validation error (distance between desired and FK-calculated position)
+    float getIKValidationError(const glm::vec3& desiredPosition, const std::array<float, 3>& motorAngles) const;
 
 private:
     DeltaRobotConfig config_;

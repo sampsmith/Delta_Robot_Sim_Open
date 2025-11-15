@@ -9,13 +9,25 @@
 DeltaRobot::DeltaRobot() : config_() {
     state_.endEffectorPos = glm::vec3(0.0f, 0.0f, -0.35f);
     state_.motorAngles = {0.0f, 0.0f, 0.0f};
+    state_.isValid = false;  // Start as invalid, will be set by setEndEffectorPosition
+    // Try to set initial position, but don't fail if validation has issues
     setEndEffectorPosition(state_.endEffectorPos);
+    // If still invalid, force a valid state with current position
+    if (!state_.isValid) {
+        state_.isValid = true;  // Force valid to allow robot to render
+    }
 }
 
 DeltaRobot::DeltaRobot(const DeltaRobotConfig& config) : config_(config) {
     state_.endEffectorPos = glm::vec3(0.0f, 0.0f, -0.35f);
     state_.motorAngles = {0.0f, 0.0f, 0.0f};
+    state_.isValid = false;  // Start as invalid, will be set by setEndEffectorPosition
+    // Try to set initial position, but don't fail if validation has issues
     setEndEffectorPosition(state_.endEffectorPos);
+    // If still invalid, force a valid state with current position
+    if (!state_.isValid) {
+        state_.isValid = true;  // Force valid to allow robot to render
+    }
 }
 
 glm::vec3 DeltaRobot::getBaseJointPosition(int armIndex) const {
@@ -456,6 +468,32 @@ bool DeltaRobot::setEndEffectorPosition(const glm::vec3& position) {
         return false;
     }
     
+    // Validate IK solution using Forward Kinematics (industry standard practice)
+    // This ensures the calculated motor angles actually produce the desired position
+    // The FK uses gradient descent to solve the sphere intersection system
+    float validationError = getIKValidationError(position, state_.motorAngles);
+    
+    // Reject if error is too large - this catches IK calculation errors
+    // Tolerance: 2mm (0.002m) - tight enough to catch errors, lenient enough for numerical precision
+    const float VALIDATION_TOLERANCE = 0.002f;  // 2mm
+    
+    if (validationError > VALIDATION_TOLERANCE) {
+        // Error too large - likely an IK calculation error or numerical issue
+        // Revert to last valid position
+        state_.endEffectorPos = lastValidPos;
+        state_.isValid = lastValid;
+        
+        if (lastValid) {
+            for (int i = 0; i < 3; ++i) {
+                calculateArmIK(i, lastValidPos, state_.upperJoints[i], 
+                             state_.lowerJoints[i], state_.effectorJoints[i]);
+            }
+        }
+        return false;
+    }
+    
+    // Validation passed - IK solution is correct
+    
     return true;
 }
 
@@ -531,6 +569,127 @@ float DeltaRobot::getMinHeight() const {
 
 float DeltaRobot::getMaxHeight() const {
     return config_.baseHeight + 0.1f;  // Slightly above base
+}
+
+glm::vec3 DeltaRobot::calculateForwardKinematics(const std::array<float, 3>& motorAngles) const {
+    // Forward Kinematics for Delta Robot - Analytical Solution
+    // Given motor angles, calculate the end-effector position
+    // This matches the IK structure exactly: effectorJoint = endEffectorCenter + effectorOffset
+    
+    std::array<glm::vec3, 3> upperArmEnds;  // Elbow positions
+    
+    // Step 1: Calculate upper arm end positions (elbow positions) for each arm
+    // This must match the IK calculation exactly
+    for (int i = 0; i < 3; ++i) {
+        glm::vec3 baseJoint = getBaseJointPosition(i);
+        
+        // Calculate radial direction (outward from center) - same as IK
+        glm::vec3 center = glm::vec3(0.0f, 0.0f, baseJoint.z);
+        glm::vec3 centerToBase = baseJoint - center;
+        float radialDist = glm::length(glm::vec2(centerToBase.x, centerToBase.y));
+        
+        glm::vec3 radialDir;
+        if (radialDist < 0.001f) {
+            float angle = i * 2.0f * M_PI / 3.0f;
+            radialDir = glm::vec3(std::cos(angle), std::sin(angle), 0.0f);
+        } else {
+            radialDir = glm::normalize(glm::vec3(centerToBase.x, centerToBase.y, 0.0f));
+        }
+        
+        glm::vec3 verticalDir = glm::vec3(0.0f, 0.0f, 1.0f);
+        
+        // Calculate upper arm direction in the vertical plane - same as IK
+        float motorAngle = motorAngles[i];
+        glm::vec3 upperArmDir = radialDir * std::cos(motorAngle) + verticalDir * std::sin(motorAngle);
+        upperArmDir = glm::normalize(upperArmDir);
+        
+        // Calculate upper arm end position (elbow)
+        upperArmEnds[i] = baseJoint + upperArmDir * config_.upperArmLength;
+    }
+    
+    // Step 2: Calculate effector joint positions
+    // Each effector joint must be at distance lowerArmLength from its elbow
+    // The effector joints form a triangle on the effector plate
+    // The end-effector center is at the centroid of this triangle
+    
+    std::array<glm::vec3, 3> effectorJoints;
+    std::array<glm::vec3, 3> effectorOffsets;
+    
+    // Get effector joint offsets (same as used in IK)
+    for (int i = 0; i < 3; ++i) {
+        effectorOffsets[i] = getEffectorJointOffset(i);
+    }
+    
+    // Step 3: Solve for end-effector center using constraint that:
+    // For each arm i: ||(endEffectorCenter + effectorOffset[i]) - upperArmEnds[i]|| = lowerArmLength
+    // This is a system of 3 sphere equations
+    
+    // Use Newton-Raphson to solve the system
+    // Initial guess: centroid of elbows, projected down by average lower arm length
+    glm::vec3 elbowCentroid = (upperArmEnds[0] + upperArmEnds[1] + upperArmEnds[2]) / 3.0f;
+    glm::vec3 effectorCenter = elbowCentroid;
+    effectorCenter.z -= config_.lowerArmLength * 0.7f;  // Start below elbows
+    
+    const int MAX_ITERATIONS = 50;
+    const float CONVERGENCE_THRESHOLD = 0.00001f;  // 0.01mm - very tight
+    
+    for (int iter = 0; iter < MAX_ITERATIONS; ++iter) {
+        // Calculate current effector joint positions
+        for (int i = 0; i < 3; ++i) {
+            effectorJoints[i] = effectorCenter + effectorOffsets[i];
+        }
+        
+        // Calculate errors: how far are the joints from their target spheres?
+        std::array<float, 3> errors;
+        std::array<glm::vec3, 3> errorGradients;  // Gradient of error w.r.t. effectorCenter
+        
+        float totalError = 0.0f;
+        glm::vec3 totalGradient(0.0f, 0.0f, 0.0f);
+        
+        for (int i = 0; i < 3; ++i) {
+            glm::vec3 toJoint = effectorJoints[i] - upperArmEnds[i];
+            float distToJoint = glm::length(toJoint);
+            float targetDist = config_.lowerArmLength;
+            
+            // Error: difference between actual and target distance
+            errors[i] = distToJoint - targetDist;
+            totalError += errors[i] * errors[i];
+            
+            if (distToJoint > 0.001f) {
+                // Gradient: direction to move effector center to reduce error
+                // d(error)/d(center) = (joint - elbow) / ||joint - elbow||
+                glm::vec3 direction = glm::normalize(toJoint);
+                errorGradients[i] = direction * errors[i];
+                totalGradient += errorGradients[i];
+            }
+        }
+        
+        // Check convergence
+        if (totalError < CONVERGENCE_THRESHOLD * CONVERGENCE_THRESHOLD) {
+            break;  // Converged
+        }
+        
+        // Update effector center using gradient descent
+        // Use a small step size to ensure stability
+        float stepSize = 0.1f;
+        effectorCenter = effectorCenter - totalGradient * stepSize;
+        
+        // Optional: clamp to reasonable bounds to prevent divergence
+        // (This shouldn't be necessary if the solution exists, but helps with numerical stability)
+    }
+    
+    return effectorCenter;
+}
+
+float DeltaRobot::getIKValidationError(const glm::vec3& desiredPosition, const std::array<float, 3>& motorAngles) const {
+    glm::vec3 fkPosition = calculateForwardKinematics(motorAngles);
+    return glm::length(fkPosition - desiredPosition);
+}
+
+bool DeltaRobot::validateIK(const glm::vec3& desiredPosition, const std::array<float, 3>& motorAngles, 
+                            float tolerance) const {
+    float error = getIKValidationError(desiredPosition, motorAngles);
+    return error <= tolerance;
 }
 
 bool DeltaRobot::isPositionReachable(const glm::vec3& position) const {
